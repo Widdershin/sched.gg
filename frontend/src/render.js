@@ -269,15 +269,19 @@ export function renderSchedule(
   const W = m.width;
   const H = m.height;
 
-  canvas.width = Math.round(W * scale);
-  canvas.height = Math.round(H * scale);
+  // Only resize the backing buffer when it actually changes — reallocating it
+  // is expensive, and many edits (text, logo position) don't alter dimensions.
+  const dw = Math.round(W * scale);
+  const dh = Math.round(H * scale);
+  if (canvas.width !== dw) canvas.width = dw;
+  if (canvas.height !== dh) canvas.height = dh;
   // Display at logical size, but let CSS (max-width:100% + height:auto) scale it
   // down proportionally while preserving the aspect ratio.
   canvas.style.width = `${W}px`;
   canvas.style.height = "auto";
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
 
-  // Background.
+  // Background (also clears the previous frame when the buffer wasn't resized).
   ctx.fillStyle = THEME.bg;
   ctx.fillRect(0, 0, W, H);
 

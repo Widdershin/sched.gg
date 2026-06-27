@@ -42,6 +42,7 @@ function fileToLogoDataUrl(file, max = 1000) {
 }
 
 const DEFAULT_LOGO = { size: 18, x: 2, y: 2 };
+const RENDER_DEBOUNCE_MS = 150;
 
 // A labelled slider paired with a numeric input, both editing the same value.
 function SliderControl({ label, value, min, max, unit = "", onChange }) {
@@ -97,16 +98,21 @@ export default function Preview({ schedule, update }) {
     img.src = logo.src;
   }, [logo?.src]);
 
+  // Debounce renders so rapid edits (typing, slider drags) only redraw the
+  // canvas once the changes settle, rather than on every keystroke/tick.
   useEffect(() => {
-    if (canvasRef.current) {
-      renderSchedule(
-        canvasRef.current,
-        schedule,
-        scale,
-        resolveRatio(aspect),
-        logoImg,
-      );
-    }
+    const id = setTimeout(() => {
+      if (canvasRef.current) {
+        renderSchedule(
+          canvasRef.current,
+          schedule,
+          scale,
+          resolveRatio(aspect),
+          logoImg,
+        );
+      }
+    }, RENDER_DEBOUNCE_MS);
+    return () => clearTimeout(id);
   }, [schedule, scale, aspect, logoImg]);
 
   const download = () => {
