@@ -246,6 +246,7 @@ function drawDaySection(
   x: number,
   y: number,
   section: Section,
+  canvasW: number,
 ): void {
   const gridLeft = x + LAYOUT.gutterW;
   const headerTop = y + LAYOUT.subtitleH;
@@ -265,9 +266,19 @@ function drawDaySection(
   ctx.font = `700 24px ${THEME.font}`;
   ctx.fillText(day.name || "", x, y + 24);
 
-  // Hour gridlines (vertical) + time labels along the top.
+  // Vertical gridlines + time labels along the top: the day-start tick (which
+  // may be a half hour), each whole hour, and the day-end tick. Labels are
+  // left-aligned to their gridline (the first lines up with the day name).
   ctx.font = `500 14px ${THEME.font}`;
-  for (let t = section.min; t <= section.max; t += 60) {
+  const contentRight = canvasW - LAYOUT.pad;
+  const rightEdge = minutesToX(section.max);
+  const ticks: number[] = [section.min];
+  for (let t = Math.ceil((section.min + 1) / 60) * 60; t < section.max; t += 60) {
+    ticks.push(t);
+  }
+  ticks.push(section.max);
+
+  ticks.forEach((t, idx) => {
     const gx = minutesToX(t);
     ctx.strokeStyle = THEME.grid;
     ctx.lineWidth = 1;
@@ -276,13 +287,21 @@ function drawDaySection(
     ctx.lineTo(gx, lanesBottom);
     ctx.stroke();
 
-    // Left-align the label to its gridline, and omit the final (right-edge) one.
-    if (t < section.max) {
+    // The start and interior labels always show. The right-edge (final) label
+    // shows only when the day doesn't reach the right content edge — i.e. it
+    // isn't full width — and won't run off the canvas.
+    const isFinal = idx === ticks.length - 1;
+    const label = formatTime(t, { compact: true });
+    const show =
+      !isFinal ||
+      (rightEdge < contentRight - 1 &&
+        gx + ctx.measureText(label).width <= canvasW);
+    if (show) {
       ctx.fillStyle = THEME.muted;
       ctx.textAlign = "left";
-      ctx.fillText(formatTime(t, { compact: true }), gx + 5, headerTop + 14);
+      ctx.fillText(label, gx, headerTop + 14);
     }
-  }
+  });
   ctx.textAlign = "left";
 
   const INSET = 6; // gap between a block and its row edge
@@ -399,7 +418,7 @@ export function renderSchedule(
   schedule.days.forEach((day, i) => {
     const section = m.sections[i];
     const x = day.align === "right" ? contentRight - section.w : left;
-    drawDaySection(ctx, day, x, y, section);
+    drawDaySection(ctx, day, x, y, section, W);
     y += section.h + LAYOUT.dayGap;
   });
 

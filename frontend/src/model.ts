@@ -137,10 +137,10 @@ export function dayTimeRange(day: Day): { min: number; max: number } {
   if (min === Infinity || max === -Infinity) {
     return { min: 10 * 60, max: 20 * 60 };
   }
-  // Pad to whole hours for tidy gridlines.
-  min = Math.floor(min / 60) * 60;
-  max = Math.ceil(max / 60) * 60;
-  if (max - min < 60) max = min + 60;
+  // Snap the day bounds to the nearest half hour.
+  min = Math.floor(min / 30) * 30;
+  max = Math.ceil(max / 30) * 30;
+  if (max - min < 30) max = min + 30;
   return { min, max };
 }
 
