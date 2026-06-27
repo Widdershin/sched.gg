@@ -1,4 +1,13 @@
-import React from "react";
+import type { ScheduleMeta } from "./types";
+
+interface Props {
+  schedules: ScheduleMeta[];
+  currentId: string | null;
+  onSelect: (id: string) => void;
+  onCreate: () => void;
+  onRename: (id: string, name: string) => void;
+  onDelete: (id: string) => void;
+}
 
 // Compact per-user schedule switcher for the topbar. Presentational: all state
 // lives in App.
@@ -9,7 +18,7 @@ export default function ScheduleList({
   onCreate,
   onRename,
   onDelete,
-}) {
+}: Props) {
   return (
     <div className="schedule-list">
       <select
@@ -33,6 +42,7 @@ export default function ScheduleList({
         disabled={!currentId}
         title="Rename schedule"
         onClick={() => {
+          if (!currentId) return;
           const current = schedules.find((s) => s.id === currentId);
           const name = prompt("Rename schedule", current?.name || "");
           if (name && name.trim()) onRename(currentId, name.trim());
@@ -45,6 +55,7 @@ export default function ScheduleList({
         disabled={!currentId}
         title="Delete schedule"
         onClick={() => {
+          if (!currentId) return;
           const current = schedules.find((s) => s.id === currentId);
           if (confirm(`Delete "${current?.name || "this schedule"}"?`)) {
             onDelete(currentId);

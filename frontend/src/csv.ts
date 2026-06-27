@@ -5,7 +5,10 @@
 // survive a round-trip. Columns:
 //   Tournament, Day, Lane, Color, Block, Start, End, Stream, Stream 2
 
-import { makeDay, makeLane, makeBlock } from "./model.js";
+import { makeDay, makeLane, makeBlock } from "./model";
+import type { Block, Schedule } from "./types";
+
+type BlockInput = Omit<Block, "id">;
 
 const HEADER = [
   "Tournament",
@@ -20,13 +23,13 @@ const HEADER = [
 ];
 
 // Quote a field if it contains a comma, quote or newline; escape quotes.
-function escapeField(value) {
+function escapeField(value: unknown): string {
   const s = String(value ?? "");
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-export function scheduleToCsv(schedule) {
-  const rows = [HEADER];
+export function scheduleToCsv(schedule: Schedule): string {
+  const rows: (string | number)[][] = [HEADER];
   for (const day of schedule.days) {
     // Full-width banner blocks use the special lane "Banner".
     for (const b of day.banners ?? []) {
@@ -65,9 +68,9 @@ export function scheduleToCsv(schedule) {
 
 // Parse CSV text into an array of string-arrays (RFC 4180-ish: quoted fields,
 // doubled quotes, CRLF or LF line endings).
-function parseCsv(text) {
-  const rows = [];
-  let row = [];
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
   let field = "";
   let inQuotes = false;
   for (let i = 0; i < text.length; i++) {
@@ -105,18 +108,29 @@ function parseCsv(text) {
   return rows;
 }
 
-export function csvToSchedule(text) {
+interface LaneAcc {
+  color: string;
+  blocks: BlockInput[];
+}
+interface DayAcc {
+  laneOrder: string[];
+  laneMap: Map<string, LaneAcc>;
+  banners: BlockInput[];
+}
+
+export function csvToSchedule(text: string): Schedule {
   const rows = parseCsv(text).filter((r) => r.some((c) => c.trim() !== ""));
   if (rows.length === 0) throw new Error("The file is empty.");
 
   // Skip the header row if present.
-  const looksLikeHeader = (rows[0][0] || "").trim().toLowerCase() === "tournament";
+  const looksLikeHeader =
+    (rows[0][0] || "").trim().toLowerCase() === "tournament";
   const dataRows = looksLikeHeader ? rows.slice(1) : rows;
   if (dataRows.length === 0) throw new Error("No data rows found in the file.");
 
   let title = "";
-  const dayOrder = [];
-  const dayMap = new Map(); // dayName -> { laneOrder, laneMap, banners }
+  const dayOrder: string[] = [];
+  const dayMap = new Map<string, DayAcc>();
 
   for (const r of dataRows) {
     const tournament = (r[0] || "").trim();
@@ -131,16 +145,17 @@ export function csvToSchedule(text) {
 
     if (!title && tournament) title = tournament;
 
-    if (!dayMap.has(dayName)) {
-      dayMap.set(dayName, { laneOrder: [], laneMap: new Map(), banners: [] });
+    let day = dayMap.get(dayName);
+    if (!day) {
+      day = { laneOrder: [], laneMap: new Map(), banners: [] };
+      dayMap.set(dayName, day);
       dayOrder.push(dayName);
     }
-    const day = dayMap.get(dayName);
 
     const hasBlock = [name, start, end, stream, stream2].some(
       (v) => String(v).trim() !== "",
     );
-    const block = hasBlock
+    const block: BlockInput | null = hasBlock
       ? {
           name: name || "Untitled",
           start: start || "12:00",
@@ -156,19 +171,20 @@ export function csvToSchedule(text) {
       continue;
     }
 
-    if (!day.laneMap.has(laneKey)) {
-      day.laneMap.set(laneKey, { color: "", blocks: [] });
+    let lane = day.laneMap.get(laneKey);
+    if (!lane) {
+      lane = { color: "", blocks: [] };
+      day.laneMap.set(laneKey, lane);
       day.laneOrder.push(laneKey);
     }
-    const lane = day.laneMap.get(laneKey);
     if (color && !lane.color) lane.color = color;
     if (block) lane.blocks.push(block);
   }
 
   const days = dayOrder.map((dayName, di) => {
-    const day = dayMap.get(dayName);
+    const day = dayMap.get(dayName)!;
     const lanes = day.laneOrder.map((lk, li) => {
-      const lane = day.laneMap.get(lk);
+      const lane = day.laneMap.get(lk)!;
       return makeLane(li, {
         ...(lane.color ? { color: lane.color } : {}),
         blocks: lane.blocks.map((b) => makeBlock(b)),

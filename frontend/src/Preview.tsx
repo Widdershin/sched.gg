@@ -1,12 +1,20 @@
-import React, { useEffect, useRef, useState } from "react";
-import { renderSchedule } from "./render.js";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
+import { renderSchedule } from "./render";
+import type { OutputSettings, Schedule, UpdateFn } from "./types";
 
 // Aspect modes. "fit" sizes tightly to the content; presets fix the ratio;
 // "custom" uses the W:H controls.
 const ASPECTS = ["fit", "16:9", "4:3", "3:2", "1:1", "4:5", "9:16", "custom"];
 
 // Resolve a mode + custom W/H into a numeric ratio (or null for "fit").
-function resolveRatio({ mode, w, h }) {
+function resolveRatio(output: OutputSettings): number | null {
+  const { mode, w, h } = output;
   if (mode === "fit") return null;
   if (mode === "custom") {
     const r = Number(w) / Number(h);
@@ -17,7 +25,7 @@ function resolveRatio({ mode, w, h }) {
 }
 
 // Read an image file, downscale to keep localStorage small, return a PNG data URL.
-function fileToLogoDataUrl(file, max = 1000) {
+function fileToLogoDataUrl(file: File, max = 1000): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = reject;
@@ -31,10 +39,10 @@ function fileToLogoDataUrl(file, max = 1000) {
         const c = document.createElement("canvas");
         c.width = w;
         c.height = h;
-        c.getContext("2d").drawImage(img, 0, 0, w, h);
+        c.getContext("2d")!.drawImage(img, 0, 0, w, h);
         resolve(c.toDataURL("image/png"));
       };
-      img.src = reader.result;
+      img.src = reader.result as string;
     };
     reader.readAsDataURL(file);
   });
@@ -43,9 +51,19 @@ function fileToLogoDataUrl(file, max = 1000) {
 const DEFAULT_LOGO = { size: 18, x: 2, y: 2 };
 const RENDER_DEBOUNCE_MS = 150;
 
+interface SliderProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  unit?: string;
+  onChange: (v: number) => void;
+}
+
 // A labelled slider paired with a numeric input, both editing the same value.
-function SliderControl({ label, value, min, max, unit = "", onChange }) {
-  const set = (v) => onChange(Math.min(max, Math.max(min, Number(v) || min)));
+function SliderControl({ label, value, min, max, unit = "", onChange }: SliderProps) {
+  const set = (v: string | number) =>
+    onChange(Math.min(max, Math.max(min, Number(v) || min)));
   return (
     <span className="ctl">
       {label}
@@ -69,16 +87,23 @@ function SliderControl({ label, value, min, max, unit = "", onChange }) {
   );
 }
 
-export default function Preview({ schedule, update, output, setOutput }) {
-  const canvasRef = useRef(null);
-  const logoInputRef = useRef(null);
-  const [logoImg, setLogoImg] = useState(null);
+interface Props {
+  schedule: Schedule;
+  update: UpdateFn;
+  output: OutputSettings;
+  setOutput: Dispatch<SetStateAction<OutputSettings>>;
+}
+
+export default function Preview({ schedule, update, output, setOutput }: Props) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null);
 
   const logo = schedule.logo;
 
   // Output settings (aspect + resolution) are owned by App so they persist and
   // sync alongside the schedule.
-  const setOutputField = (key, value) =>
+  const setOutputField = (key: keyof OutputSettings, value: number | string) =>
     setOutput((prev) => ({ ...prev, [key]: value }));
 
   // Load the logo data URL into an Image element for the canvas to draw.
@@ -116,7 +141,7 @@ export default function Preview({ schedule, update, output, setOutput }) {
       if (!blob) return;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      const safe = (s) =>
+      const safe = (s: string) =>
         (s || "schedule").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
       a.href = url;
       a.download = `${safe(schedule.title)}-schedule.png`;
@@ -125,7 +150,7 @@ export default function Preview({ schedule, update, output, setOutput }) {
     }, "image/png");
   };
 
-  const onLogoFile = async (file) => {
+  const onLogoFile = async (file: File | undefined) => {
     if (!file) return;
     try {
       const src = await fileToLogoDataUrl(file);
@@ -137,7 +162,7 @@ export default function Preview({ schedule, update, output, setOutput }) {
     }
   };
 
-  const setLogoField = (key, value) =>
+  const setLogoField = (key: "size" | "x" | "y", value: number) =>
     update((s) => {
       if (s.logo) s.logo[key] = value;
     });

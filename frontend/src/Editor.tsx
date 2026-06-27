@@ -1,16 +1,16 @@
-import React from "react";
-import { makeLane, makeBlock, LANE_COLORS, parseTime } from "./model.js";
+import { makeLane, makeBlock, LANE_COLORS, parseTime } from "./model";
+import type { Block, Day, Lane, Schedule, UpdateFn } from "./types";
 
-// Find a day/lane/block within the schedule clone by id.
-function findDay(s, dayId) {
+// Find a day within the schedule clone by id.
+function findDay(s: Schedule, dayId: string): Day | undefined {
   return s.days.find((d) => d.id === dayId);
 }
 
-export default function Editor({ day, update }) {
-  const setDay = (mutator) =>
+export default function Editor({ day, update }: { day: Day; update: UpdateFn }) {
+  const setDay = (mutator: (d: Day) => void) =>
     update((s) => {
       const d = findDay(s, day.id);
-      if (d) mutator(d, s);
+      if (d) mutator(d);
     });
 
   const removeDay = () => {
@@ -107,12 +107,19 @@ export default function Editor({ day, update }) {
   );
 }
 
-function LaneEditor({ lane, dayId, update }) {
-  const setLane = (mutator) =>
+function LaneEditor({
+  lane,
+  dayId,
+  update,
+}: {
+  lane: Lane;
+  dayId: string;
+  update: UpdateFn;
+}) {
+  const setLane = (mutator: (l: Lane) => void) =>
     update((s) => {
-      const d = findDay(s, dayId);
-      const l = d?.lanes.find((x) => x.id === lane.id);
-      if (l) mutator(l, d);
+      const l = findDay(s, dayId)?.lanes.find((x) => x.id === lane.id);
+      if (l) mutator(l);
     });
 
   const removeLane = () =>
@@ -130,7 +137,7 @@ function LaneEditor({ lane, dayId, update }) {
       const start = last ? last.end : "12:00";
       const startMin = parseTime(start) ?? 12 * 60;
       const endMin = Math.min(startMin + 60, 23 * 60 + 59);
-      const fmt = (mins) =>
+      const fmt = (mins: number) =>
         `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(
           mins % 60,
         ).padStart(2, "0")}`;
@@ -160,9 +167,7 @@ function LaneEditor({ lane, dayId, update }) {
       </div>
 
       <div className="blocks">
-        {lane.blocks.length === 0 && (
-          <p className="empty">No blocks yet.</p>
-        )}
+        {lane.blocks.length === 0 && <p className="empty">No blocks yet.</p>}
         {lane.blocks.map((block) => (
           <BlockEditor
             key={block.id}
@@ -194,11 +199,18 @@ function LaneEditor({ lane, dayId, update }) {
 // `setBlock(mutator)` applies a mutation to this block; `removeBlock()` deletes
 // it. The parent supplies these so the same editor works for lane blocks and
 // the day's full-width banner blocks.
-function BlockEditor({ block, setBlock, removeBlock }) {
-  const invalidTime =
-    parseTime(block.start) == null ||
-    parseTime(block.end) == null ||
-    parseTime(block.end) <= parseTime(block.start);
+function BlockEditor({
+  block,
+  setBlock,
+  removeBlock,
+}: {
+  block: Block;
+  setBlock: (mutator: (b: Block) => void) => void;
+  removeBlock: () => void;
+}) {
+  const startMin = parseTime(block.start);
+  const endMin = parseTime(block.end);
+  const invalidTime = startMin == null || endMin == null || endMin <= startMin;
 
   return (
     <div className={`block ${invalidTime ? "invalid" : ""}`}>
@@ -247,14 +259,12 @@ function BlockEditor({ block, setBlock, removeBlock }) {
           ✕
         </button>
       </div>
-      {invalidTime && (
-        <p className="warn">End time must be after start time.</p>
-      )}
+      {invalidTime && <p className="warn">End time must be after start time.</p>}
     </div>
   );
 }
 
-const COLOR_NAMES = {
+const COLOR_NAMES: Record<string, string> = {
   "#e23c5b": "Red",
   "#3c8ce2": "Blue",
   "#36b37e": "Green",

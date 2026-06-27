@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import { useAuth } from "./AuthContext.jsx";
-import { api } from "./api.js";
+import { useState } from "react";
+import { useAuth } from "./AuthContext";
+import { api } from "./api";
 
 export default function AccountMenu() {
   const auth = useAuth();
@@ -14,7 +14,11 @@ export default function AccountMenu() {
 
   // Backend unreachable (e.g. static build): work offline, hide auth UI.
   if (!auth.online) {
-    return <span className="account-status" title="Saved locally only">Offline</span>;
+    return (
+      <span className="account-status" title="Saved locally only">
+        Offline
+      </span>
+    );
   }
 
   if (auth.user) {
@@ -30,7 +34,7 @@ export default function AccountMenu() {
     );
   }
 
-  const run = async (fn) => {
+  const run = async (fn: () => Promise<unknown>) => {
     setError("");
     setBusy(true);
     try {
@@ -39,7 +43,7 @@ export default function AccountMenu() {
       setUsername("");
       setPassword("");
     } catch (e) {
-      setError(e.message);
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }

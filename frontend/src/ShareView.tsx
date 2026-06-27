@@ -1,23 +1,29 @@
-import React, { useEffect, useRef, useState } from "react";
-import { renderSchedule } from "./render.js";
-import { api } from "./api.js";
+import { useEffect, useRef, useState } from "react";
+import { renderSchedule } from "./render";
+import { api } from "./api";
+import type { OutputSettings, SharedSchedule } from "./types";
 
 // Resolve an output settings object into a numeric aspect ratio (or null = fit).
-function resolveRatio(output) {
+function resolveRatio(output: OutputSettings | null): number | null {
   const mode = output?.mode ?? "fit";
   if (mode === "fit") return null;
   if (mode === "custom") {
-    const r = Number(output.w) / Number(output.h);
+    const r = Number(output!.w) / Number(output!.h);
     return Number.isFinite(r) && r > 0 ? r : null;
   }
   const [w, h] = String(mode).split(":").map(Number);
   return w / h;
 }
 
-export default function ShareView({ token }) {
-  const canvasRef = useRef(null);
-  const [state, setState] = useState({ status: "loading" });
-  const [logoImg, setLogoImg] = useState(null);
+type ShareState =
+  | { status: "loading" }
+  | { status: "error" }
+  | ({ status: "ok" } & SharedSchedule);
+
+export default function ShareView({ token }: { token: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [state, setState] = useState<ShareState>({ status: "loading" });
+  const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null);
 
   // Fetch the shared schedule once.
   useEffect(() => {
@@ -35,7 +41,7 @@ export default function ShareView({ token }) {
     };
   }, [token]);
 
-  const logoSrc = state.data?.logo?.src;
+  const logoSrc = state.status === "ok" ? state.data.logo?.src : undefined;
   useEffect(() => {
     if (!logoSrc) {
       setLogoImg(null);
@@ -61,15 +67,15 @@ export default function ShareView({ token }) {
 
   const download = () => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || state.status !== "ok") return;
     canvas.toBlob((blob) => {
       if (!blob) return;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      const safe = (s) =>
+      const safe = (s: string | undefined) =>
         (s || "schedule").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
       a.href = url;
-      a.download = `${safe(state.data?.title || state.name)}-schedule.png`;
+      a.download = `${safe(state.data.title || state.name)}-schedule.png`;
       a.click();
       URL.revokeObjectURL(url);
     }, "image/png");

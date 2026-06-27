@@ -1,4 +1,5 @@
-import { dayTimeRange, parseTime, formatTime } from "./model.js";
+import { dayTimeRange, parseTime, formatTime } from "./model";
+import type { Block, Day, Schedule } from "./types";
 
 // Visual theme for the rendered schedule image.
 const THEME = {
@@ -29,8 +30,37 @@ const LAYOUT = {
 // Neutral grey used for banner blocks (spanning all lanes, e.g. "Doors open").
 const BANNER_COLOR = "#7c8699";
 
+type Ctx = CanvasRenderingContext2D;
+
+interface Section {
+  w: number;
+  h: number;
+  min: number;
+  max: number;
+  trackW: number;
+  pxPerMin: number;
+}
+
+interface Measure {
+  width: number;
+  height: number;
+  sections: Section[];
+}
+
+interface BlockOpts {
+  center?: boolean;
+  hideEnd?: boolean;
+}
+
 // Rounded rectangle path helper.
-function roundRect(ctx, x, y, w, h, r) {
+function roundRect(
+  ctx: Ctx,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
   const radius = Math.min(r, h / 2, w / 2);
   ctx.beginPath();
   ctx.moveTo(x + radius, y);
@@ -42,9 +72,14 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 // Wrap text to a max width, returning an array of lines (capped).
-function wrapText(ctx, text, maxWidth, maxLines) {
+function wrapText(
+  ctx: Ctx,
+  text: string,
+  maxWidth: number,
+  maxLines: number,
+): string[] {
   const words = String(text).split(/\s+/);
-  const lines = [];
+  const lines: string[] = [];
   let current = "";
   for (const word of words) {
     const candidate = current ? `${current} ${word}` : word;
@@ -68,7 +103,7 @@ function wrapText(ctx, text, maxWidth, maxLines) {
 }
 
 // Truncate a single line with an ellipsis to fit a width.
-function ellipsize(ctx, text, maxWidth) {
+function ellipsize(ctx: Ctx, text: string, maxWidth: number): string {
   if (ctx.measureText(text).width <= maxWidth) return text;
   let s = text;
   while (s && ctx.measureText(`${s}…`).width > maxWidth) s = s.slice(0, -1);
@@ -78,21 +113,20 @@ function ellipsize(ctx, text, maxWidth) {
 // Pixel size of a single day section (excludes the shared title). `hScale`
 // compresses only the time axis, so blocks change width while text, block
 // heights and corner radii keep their natural proportions.
-function measureDaySection(day, hScale = 1) {
+function measureDaySection(day: Day, hScale = 1): Section {
   const { min, max } = dayTimeRange(day);
   const laneCount = Math.max(day.lanes.length, 1);
   const pxPerMin = LAYOUT.pxPerMin * hScale;
   const trackW = (max - min) * pxPerMin;
   const w = LAYOUT.gutterW + trackW;
-  const lanesH =
-    laneCount * LAYOUT.laneH + (laneCount - 1) * LAYOUT.laneGap;
+  const lanesH = laneCount * LAYOUT.laneH + (laneCount - 1) * LAYOUT.laneGap;
   const h = LAYOUT.subtitleH + LAYOUT.timeHeaderH + lanesH;
   return { w, h, min, max, trackW, pxPerMin };
 }
 
 // Pixel dimensions for the whole schedule (all days stacked). `hScale` only
 // affects horizontal (time) sizing; height is unaffected.
-export function measureSchedule(schedule, hScale = 1) {
+export function measureSchedule(schedule: Schedule, hScale = 1): Measure {
   const days = schedule.days.length ? schedule.days : [];
   const sections = days.map((d) => measureDaySection(d, hScale));
   const contentW = sections.reduce((acc, s) => Math.max(acc, s.w), 0);
@@ -109,12 +143,21 @@ export function measureSchedule(schedule, hScale = 1) {
 }
 
 // The title (and its reserved whitespace) is hidden when a logo is present.
-function titleHeight(schedule) {
+function titleHeight(schedule: Schedule): number {
   return schedule.logo?.src ? 0 : LAYOUT.titleH;
 }
 
 // Draw a single time block (lane or banner) at (x, y) with the given accent.
-function drawBlock(ctx, block, x, y, w, h, accent, opts = {}) {
+function drawBlock(
+  ctx: Ctx,
+  block: Block,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  accent: string,
+  opts: BlockOpts = {},
+): void {
   // Body.
   ctx.fillStyle = hexToRgba(accent, 0.2);
   roundRect(ctx, x, y, w, h, LAYOUT.blockRadius);
@@ -153,21 +196,13 @@ function drawBlock(ctx, block, x, y, w, h, accent, opts = {}) {
   if (hasTime) {
     ctx.fillStyle = THEME.muted;
     ctx.font = `500 13px ${THEME.font}`;
-    let timeText = `${formatTime(start, { compact: true })}–${formatTime(end, {compact: true})}`;
-
+    let timeText = `${formatTime(start, { compact: true })}–${formatTime(end, {
+      compact: true,
+    })}`;
     if (opts.hideEnd) {
       timeText = `${formatTime(start, { compact: true })}`;
-    };
-
-    ctx.fillText(
-      ellipsize(
-        ctx,
-        timeText,
-        innerW,
-      ),
-      textX,
-      textY,
-    );
+    }
+    ctx.fillText(ellipsize(ctx, timeText, innerW), textX, textY);
   }
   ctx.textAlign = "left"; // restore for the badges below
 
@@ -205,7 +240,13 @@ function drawBlock(ctx, block, x, y, w, h, accent, opts = {}) {
 }
 
 // Draw one day section with its top-left at (x, y). Time range is per-day.
-function drawDaySection(ctx, day, x, y, section) {
+function drawDaySection(
+  ctx: Ctx,
+  day: Day,
+  x: number,
+  y: number,
+  section: Section,
+): void {
   const gridLeft = x + LAYOUT.gutterW;
   const headerTop = y + LAYOUT.subtitleH;
   const lanesTop = headerTop + LAYOUT.timeHeaderH;
@@ -213,9 +254,9 @@ function drawDaySection(ctx, day, x, y, section) {
   const laneCount = Math.max(day.lanes.length, 1);
   const lanesBottom =
     lanesTop + laneCount * LAYOUT.laneH + (laneCount - 1) * LAYOUT.laneGap;
-  const minutesToX = (mins) =>
+  const minutesToX = (mins: number) =>
     gridLeft + (mins - section.min) * section.pxPerMin;
-  const blockW = (start, end) =>
+  const blockW = (start: number, end: number) =>
     Math.max((end - start) * section.pxPerMin, 30);
 
   // Day name.
@@ -299,14 +340,12 @@ function drawDaySection(ctx, day, x, y, section) {
 // (or stretching) the time axis so blocks change width — text, block heights and
 // radii keep their proportions. Pass null to size tightly to the content.
 export function renderSchedule(
-  canvas,
-  schedule,
+  canvas: HTMLCanvasElement,
+  schedule: Schedule,
   scale = 2,
-  aspectRatio = null,
-  logoImg = null,
-) {
-  const ctx = canvas.getContext("2d");
-
+  aspectRatio: number | null = null,
+  logoImg: HTMLImageElement | null = null,
+): Measure {
   // Natural layout, then solve for the time-axis factor that makes the content
   // width match the target ratio (height is independent of the factor).
   const base = measureSchedule(schedule, 1);
@@ -322,6 +361,9 @@ export function renderSchedule(
   const m = hScale === 1 ? base : measureSchedule(schedule, hScale);
   const W = m.width;
   const H = m.height;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return m;
 
   // Only resize the backing buffer when it actually changes — reallocating it
   // is expensive, and many edits (text, logo position) don't alter dimensions.
@@ -375,11 +417,11 @@ export function renderSchedule(
   return m;
 }
 
-function clamp(v, lo, hi) {
+function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, Number(v) || 0));
 }
 
-function hexToRgba(hex, alpha) {
+function hexToRgba(hex: string, alpha: number): string {
   const h = hex.replace("#", "");
   const full =
     h.length === 3

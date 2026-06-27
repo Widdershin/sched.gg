@@ -40,7 +40,7 @@
         name = "sched-gg-frontend";
         packageJson = ./frontend/package.json;
         packageLock = ./frontend/package-lock.json;
-        hash = "sha256-yhRclkAQMVzznYb5aeAu9/0Hm7EEjFqczk3wGte6Yxg=";
+        hash = "sha256-m7B6MgUePuy+5EgMz9lVbVI7KnvyDCCQtjOLH+HX7Fg=";
         node = pkgs.nodejs;
       };
 

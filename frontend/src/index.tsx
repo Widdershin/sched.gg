@@ -1,8 +1,7 @@
-import React from "react";
 import { createRoot } from "react-dom/client";
-import App from "./App.jsx";
-import ShareView from "./ShareView.jsx";
-import { AuthProvider } from "./AuthContext.jsx";
+import App from "./App";
+import ShareView from "./ShareView";
+import { AuthProvider } from "./AuthContext";
 import "./styles.css";
 
 // `/?share=TOKEN` opens a read-only shared schedule (served by the existing
@@ -19,8 +18,8 @@ function Root() {
 }
 
 // Mount the app and return a teardown function.
-function startApp() {
-  const root = createRoot(document.getElementById("root"));
+function startApp(): () => void {
+  const root = createRoot(document.getElementById("root")!);
   root.render(<Root />);
   return () => root.unmount();
 }

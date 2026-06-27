@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import {
   loadSchedule,
   saveSchedule,
@@ -6,31 +6,44 @@ import {
   makeDay,
   loadOutputSettings,
   saveOutputSettings,
-} from "./model.js";
-import Editor from "./Editor.jsx";
-import Preview from "./Preview.jsx";
-import { scheduleToCsv, csvToSchedule } from "./csv.js";
-import { useAuth } from "./AuthContext.jsx";
-import AccountMenu from "./AccountMenu.jsx";
-import ScheduleList from "./ScheduleList.jsx";
-import { api } from "./api.js";
+} from "./model";
+import Editor from "./Editor";
+import Preview from "./Preview";
+import { scheduleToCsv, csvToSchedule } from "./csv";
+import { useAuth } from "./AuthContext";
+import AccountMenu from "./AccountMenu";
+import ScheduleList from "./ScheduleList";
+import { api } from "./api";
+import type { Schedule, ScheduleMeta } from "./types";
 
 const SERVER_SAVE_DEBOUNCE_MS = 800;
+const DRAG_THRESHOLD = 6; // px of movement before a press becomes a drag
+
+interface DragState {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  id: string;
+  overId: string | null;
+  dragging: boolean;
+}
 
 export default function App() {
   const auth = useAuth();
-  const [schedule, setSchedule] = useState(loadSchedule);
+  const [schedule, setSchedule] = useState<Schedule>(loadSchedule);
   const [output, setOutput] = useState(loadOutputSettings);
-  const [activeDayId, setActiveDayId] = useState(
+  const [activeDayId, setActiveDayId] = useState<string | null>(
     () => schedule.days[0]?.id ?? null,
   );
-  const [dragId, setDragId] = useState(null);
-  const [dragOverId, setDragOverId] = useState(null);
-  const importInputRef = useRef(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   // Server-synced schedule list + the one currently being edited.
-  const [scheduleList, setScheduleList] = useState([]);
-  const [currentScheduleId, setCurrentScheduleId] = useState(null);
+  const [scheduleList, setScheduleList] = useState<ScheduleMeta[]>([]);
+  const [currentScheduleId, setCurrentScheduleId] = useState<string | null>(
+    null,
+  );
 
   // Persist locally on every change (offline fallback, always on).
   useEffect(() => {
@@ -41,7 +54,7 @@ export default function App() {
   }, [output]);
 
   // Load a schedule from the server into the editor.
-  const loadScheduleFromServer = async (id) => {
+  const loadScheduleFromServer = async (id: string) => {
     const full = await api.getSchedule(id);
     setSchedule(full.data);
     if (full.output) setOutput(full.output);
@@ -105,7 +118,7 @@ export default function App() {
   }, [schedule, activeDayId]);
 
   // Apply a mutation to a fresh clone of the schedule.
-  const update = (mutator) => {
+  const update = (mutator: (s: Schedule) => void) => {
     setSchedule((prev) => {
       const next = structuredClone(prev);
       mutator(next);
@@ -132,7 +145,7 @@ export default function App() {
   };
 
   // --- Server schedule management -------------------------------------------
-  const selectSchedule = (id) => {
+  const selectSchedule = (id: string) => {
     if (id && id !== currentScheduleId) {
       loadScheduleFromServer(id).catch((e) => alert(e.message));
     }
@@ -151,22 +164,22 @@ export default function App() {
       setActiveDayId(fresh.days[0].id);
       setCurrentScheduleId(created.id);
     } catch (e) {
-      alert(e.message);
+      alert(e instanceof Error ? e.message : String(e));
     }
   };
 
-  const renameSchedule = async (id, name) => {
+  const renameSchedule = async (id: string, name: string) => {
     try {
       await api.updateSchedule(id, { name });
       setScheduleList((prev) =>
         prev.map((s) => (s.id === id ? { ...s, name } : s)),
       );
     } catch (e) {
-      alert(e.message);
+      alert(e instanceof Error ? e.message : String(e));
     }
   };
 
-  const deleteSchedule = async (id) => {
+  const deleteSchedule = async (id: string) => {
     try {
       await api.deleteSchedule(id);
       const remaining = scheduleList.filter((s) => s.id !== id);
@@ -182,7 +195,7 @@ export default function App() {
         }
       }
     } catch (e) {
-      alert(e.message);
+      alert(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -198,7 +211,7 @@ export default function App() {
         prompt("Share link:", url);
       }
     } catch (e) {
-      alert(e.message);
+      alert(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -208,27 +221,28 @@ export default function App() {
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const safe = (s) => (s || "schedule").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+    const safe = (s: string) =>
+      (s || "schedule").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
     a.href = url;
     a.download = `${safe(schedule.title)}-schedule.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const importCsv = async (file) => {
+  const importCsv = async (file: File | undefined) => {
     if (!file) return;
     try {
       const text = await file.text();
       const imported = csvToSchedule(text);
       setSchedule(imported);
       setActiveDayId(imported.days[0]?.id ?? null);
-    } catch (err) {
-      alert(`Could not import CSV: ${err.message}`);
+    } catch (e) {
+      alert(`Could not import CSV: ${e instanceof Error ? e.message : e}`);
     }
   };
 
   // Move the dragged day so it sits just before the drop-target day.
-  const moveDay = (fromId, toId) => {
+  const moveDay = (fromId: string, toId: string) => {
     if (!fromId || fromId === toId) return;
     update((s) => {
       const from = s.days.findIndex((d) => d.id === fromId);
@@ -240,11 +254,13 @@ export default function App() {
   };
 
   // Pointer-based drag reordering (works for mouse, touch and pen).
-  const dragState = useRef(null);
+  const dragState = useRef<DragState | null>(null);
   const suppressClick = useRef(false);
-  const DRAG_THRESHOLD = 6; // px of movement before a press becomes a drag
 
-  const onTabPointerDown = (dayId, e) => {
+  const onTabPointerDown = (
+    dayId: string,
+    e: PointerEvent<HTMLButtonElement>,
+  ) => {
     if (e.button != null && e.button > 0) return; // ignore non-primary buttons
     suppressClick.current = false;
     dragState.current = {
@@ -258,7 +274,7 @@ export default function App() {
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
-  const onTabPointerMove = (e) => {
+  const onTabPointerMove = (e: PointerEvent<HTMLButtonElement>) => {
     const st = dragState.current;
     if (!st || st.pointerId !== e.pointerId) return;
     if (!st.dragging) {
@@ -275,7 +291,7 @@ export default function App() {
     setDragOverId(st.overId);
   };
 
-  const onTabPointerUp = (e) => {
+  const onTabPointerUp = (e: PointerEvent<HTMLButtonElement>) => {
     const st = dragState.current;
     if (!st || st.pointerId !== e.pointerId) return;
     if (st.dragging) {
@@ -287,7 +303,7 @@ export default function App() {
     setDragOverId(null);
   };
 
-  const onTabClick = (dayId) => {
+  const onTabClick = (dayId: string) => {
     if (suppressClick.current) {
       suppressClick.current = false;
       return;

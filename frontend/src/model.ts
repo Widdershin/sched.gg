@@ -1,18 +1,5 @@
 // Data model + helpers for the schedule.
-//
-// schedule = {
-//   title: string,
-//   days: [
-//     {
-//       id, name,
-//       lanes: [
-//         { id, name, color, blocks: [
-//           { id, name, start, end, stream }
-//         ] }
-//       ]
-//     }
-//   ]
-// }
+import type { Block, Day, Lane, OutputSettings, Schedule } from "./types";
 
 const STORAGE_KEY = "sched.gg:v1";
 
@@ -27,12 +14,12 @@ export const LANE_COLORS = [
 ];
 
 let counter = 0;
-export function uid(prefix = "id") {
+export function uid(prefix = "id"): string {
   counter += 1;
   return `${prefix}-${Date.now().toString(36)}-${counter}`;
 }
 
-export function makeBlock(partial = {}) {
+export function makeBlock(partial: Partial<Block> = {}): Block {
   return {
     id: uid("block"),
     name: "New match",
@@ -44,7 +31,7 @@ export function makeBlock(partial = {}) {
   };
 }
 
-export function makeLane(index = 0, partial = {}) {
+export function makeLane(index = 0, partial: Partial<Lane> = {}): Lane {
   return {
     id: uid("lane"),
     color: LANE_COLORS[index % LANE_COLORS.length],
@@ -53,18 +40,18 @@ export function makeLane(index = 0, partial = {}) {
   };
 }
 
-export function makeDay(index = 0, partial = {}) {
+export function makeDay(index = 0, partial: Partial<Day> = {}): Day {
   return {
     id: uid("day"),
     name: `Day ${index + 1}`,
-    align: "left", // "left" | "right" — horizontal placement in the image
+    align: "left", // horizontal placement in the image
     banners: [], // full-width blocks spanning all lanes (e.g. "Doors open")
     lanes: [makeLane(0)],
     ...partial,
   };
 }
 
-export function defaultSchedule() {
+export function defaultSchedule(): Schedule {
   const day = makeDay(0, { name: "Saturday" });
   day.banners = [
     makeBlock({ name: "Doors open", start: "10:00", end: "11:00" }),
@@ -104,7 +91,7 @@ export function defaultSchedule() {
 // --- Time helpers -----------------------------------------------------------
 
 // Parse "HH:MM" into minutes since midnight. Returns null when invalid.
-export function parseTime(value) {
+export function parseTime(value: unknown): number | null {
   if (typeof value !== "string") return null;
   const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
   if (!match) return null;
@@ -116,7 +103,10 @@ export function parseTime(value) {
 
 // Format minutes-since-midnight as a 12-hour time. `compact` drops the minutes
 // on the hour (e.g. "10 AM" rather than "10:00 AM").
-export function formatTime(minutes, { compact = false } = {}) {
+export function formatTime(
+  minutes: number,
+  { compact = false }: { compact?: boolean } = {},
+): string {
   const total = ((minutes % 1440) + 1440) % 1440;
   const h = Math.floor(total / 60);
   const m = total % 60;
@@ -127,10 +117,10 @@ export function formatTime(minutes, { compact = false } = {}) {
 }
 
 // Compute [min, max] minute range covering every block in a day (lanes + banners).
-export function dayTimeRange(day) {
+export function dayTimeRange(day: Day): { min: number; max: number } {
   let min = Infinity;
   let max = -Infinity;
-  const consider = (block) => {
+  const consider = (block: Block) => {
     const start = parseTime(block.start);
     const end = parseTime(block.end);
     if (start != null) {
@@ -156,11 +146,11 @@ export function dayTimeRange(day) {
 
 // --- Persistence ------------------------------------------------------------
 
-export function loadSchedule() {
+export function loadSchedule(): Schedule {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultSchedule();
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(raw) as Schedule;
     if (!parsed || !Array.isArray(parsed.days) || parsed.days.length === 0) {
       return defaultSchedule();
     }
@@ -170,7 +160,7 @@ export function loadSchedule() {
   }
 }
 
-export function saveSchedule(schedule) {
+export function saveSchedule(schedule: Schedule): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(schedule));
   } catch {
@@ -181,19 +171,19 @@ export function saveSchedule(schedule) {
 // --- Output settings: aspect ratio + resolution (persisted separately) ---
 
 const OUTPUT_KEY = "sched.gg:output:v1";
-const DEFAULT_OUTPUT = { mode: "fit", w: 16, h: 9, scale: 2 };
+const DEFAULT_OUTPUT: OutputSettings = { mode: "fit", w: 16, h: 9, scale: 2 };
 
-export function loadOutputSettings() {
+export function loadOutputSettings(): OutputSettings {
   try {
     const raw = localStorage.getItem(OUTPUT_KEY);
     if (!raw) return { ...DEFAULT_OUTPUT };
-    return { ...DEFAULT_OUTPUT, ...JSON.parse(raw) };
+    return { ...DEFAULT_OUTPUT, ...(JSON.parse(raw) as Partial<OutputSettings>) };
   } catch {
     return { ...DEFAULT_OUTPUT };
   }
 }
 
-export function saveOutputSettings(settings) {
+export function saveOutputSettings(settings: OutputSettings): void {
   try {
     localStorage.setItem(OUTPUT_KEY, JSON.stringify(settings));
   } catch {
