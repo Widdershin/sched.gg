@@ -306,26 +306,44 @@ function drawDaySection(
 
   const INSET = 6; // gap between a block and its row edge
 
-  // Lane row backgrounds (faint), behind everything.
+  // Banner placements (full-height columns by time).
+  const bannerDraws = banners
+    .map((block) => {
+      const start = parseTime(block.start);
+      const end = parseTime(block.end);
+      if (start == null || end == null || end <= start) return null;
+      return { block, x: minutesToX(start), w: blockW(start, end) };
+    })
+    .filter((b): b is { block: Block; x: number; w: number } => b !== null);
+
+  // Lane row backgrounds (faint), excluding the columns covered by banners so
+  // the banner sits against the page background, not the lane tint.
+  ctx.save();
+  if (bannerDraws.length) {
+    const top = lanesTop;
+    const fullH = lanesBottom - lanesTop;
+    ctx.beginPath();
+    ctx.rect(gridLeft, top, section.trackW, fullH);
+    for (const b of bannerDraws) ctx.rect(b.x, top, b.w, fullH);
+    ctx.clip("evenodd");
+  }
   day.lanes.forEach((_, i) => {
     const laneY = lanesTop + i * (LAYOUT.laneH + LAYOUT.laneGap);
     ctx.fillStyle = hexToRgba("#ffffff", 0.02);
     roundRect(ctx, gridLeft, laneY, section.trackW, LAYOUT.laneH, 8);
     ctx.fill();
   });
+  ctx.restore();
 
-  // Banners first: grey blocks spanning the full height of all lanes (e.g.
+  // Banners: grey blocks spanning the full height of all lanes (e.g.
   // "Doors open"), positioned by time — so lane blocks always sit on top.
-  for (const block of banners) {
-    const start = parseTime(block.start);
-    const end = parseTime(block.end);
-    if (start == null || end == null || end <= start) continue;
+  for (const { block, x: bx, w: bw } of bannerDraws) {
     drawBlock(
       ctx,
       block,
-      minutesToX(start),
+      bx,
       lanesTop + INSET,
-      blockW(start, end),
+      bw,
       lanesBottom - lanesTop - INSET * 2,
       BANNER_COLOR,
       { center: true, hideEnd: true },
