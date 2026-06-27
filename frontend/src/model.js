@@ -110,10 +110,16 @@ export function parseTime(value) {
   return h * 60 + m;
 }
 
-export function formatTime(minutes) {
-  const h = Math.floor(minutes / 60) % 24;
-  const m = minutes % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+// Format minutes-since-midnight as a 12-hour time. `compact` drops the minutes
+// on the hour (e.g. "10 AM" rather than "10:00 AM").
+export function formatTime(minutes, { compact = false } = {}) {
+  const total = ((minutes % 1440) + 1440) % 1440;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  const meridiem = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  if (compact && m === 0) return `${h12} ${meridiem}`;
+  return `${h12}:${String(m).padStart(2, "0")} ${meridiem}`;
 }
 
 // Compute [min, max] minute range covering every block in a day.

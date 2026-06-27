@@ -135,7 +135,7 @@ function drawDaySection(ctx, day, x, y, section) {
 
     ctx.fillStyle = THEME.muted;
     ctx.textAlign = "center";
-    ctx.fillText(formatTime(t), gx, headerTop + 14);
+    ctx.fillText(formatTime(t, { compact: true }), gx, headerTop + 14);
   }
   ctx.textAlign = "left";
 
@@ -192,7 +192,13 @@ function drawDaySection(ctx, day, x, y, section) {
       ctx.fillStyle = THEME.muted;
       ctx.font = `500 13px ${THEME.font}`;
       ctx.fillText(
-        ellipsize(ctx, `${block.start}–${block.end}`, innerW),
+        ellipsize(
+          ctx,
+          `${formatTime(start, { compact: true })}–${formatTime(end, {
+            compact: true,
+          })}`,
+          innerW,
+        ),
         innerX,
         textY,
       );
