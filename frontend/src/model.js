@@ -57,6 +57,7 @@ export function makeDay(index = 0, partial = {}) {
   return {
     id: uid("day"),
     name: `Day ${index + 1}`,
+    align: "left", // "left" | "right" — horizontal placement in the image
     lanes: [makeLane(0)],
     ...partial,
   };

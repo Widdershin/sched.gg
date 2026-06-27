@@ -35,6 +35,15 @@ export default function Editor({ day, update }) {
           placeholder="Day name (e.g. Saturday)"
           onChange={(e) => setDay((d) => (d.name = e.target.value))}
         />
+        <button
+          className="btn ghost"
+          title="Align this day in the image"
+          onClick={() =>
+            setDay((d) => (d.align = d.align === "right" ? "left" : "right"))
+          }
+        >
+          {day.align === "right" ? "Align ⇥" : "Align ⇤"}
+        </button>
         <button className="btn ghost danger" onClick={removeDay}>
           Delete day
         </button>

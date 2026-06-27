@@ -284,11 +284,13 @@ export function renderSchedule(canvas, schedule, scale = 2, aspectRatio = null) 
   ctx.font = `800 40px ${THEME.font}`;
   ctx.fillText(schedule.title || "Tournament", left, LAYOUT.pad + 40);
 
-  // Day sections, stacked.
+  // Day sections, stacked. Right-aligned days hug the right content edge.
+  const contentRight = W - LAYOUT.pad;
   let y = LAYOUT.pad + LAYOUT.titleH;
   schedule.days.forEach((day, i) => {
     const section = m.sections[i];
-    drawDaySection(ctx, day, left, y, section);
+    const x = day.align === "right" ? contentRight - section.w : left;
+    drawDaySection(ctx, day, x, y, section);
     y += section.h + LAYOUT.dayGap;
   });
 
