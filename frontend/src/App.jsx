@@ -225,7 +225,7 @@ export default function App() {
           )}
         </section>
         <section className="preview-pane">
-          <Preview schedule={schedule} />
+          <Preview schedule={schedule} update={update} />
         </section>
       </main>
     </div>

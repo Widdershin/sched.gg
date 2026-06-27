@@ -244,7 +244,13 @@ function drawDaySection(ctx, day, x, y, section) {
 // canvas to that ratio by keeping the content's natural height and compressing
 // (or stretching) the time axis so blocks change width — text, block heights and
 // radii keep their proportions. Pass null to size tightly to the content.
-export function renderSchedule(canvas, schedule, scale = 2, aspectRatio = null) {
+export function renderSchedule(
+  canvas,
+  schedule,
+  scale = 2,
+  aspectRatio = null,
+  logoImg = null,
+) {
   const ctx = canvas.getContext("2d");
 
   // Natural layout, then solve for the time-axis factor that makes the content
@@ -294,7 +300,22 @@ export function renderSchedule(canvas, schedule, scale = 2, aspectRatio = null) 
     y += section.h + LAYOUT.dayGap;
   });
 
+  // Logo overlay. Positioned as a percentage of the free space so it stays in
+  // bounds; size is a percentage of the canvas width, aspect preserved.
+  const logo = schedule.logo;
+  if (logoImg && logo?.src && logoImg.naturalWidth > 0) {
+    const lw = (clamp(logo.size, 1, 100) / 100) * W;
+    const lh = lw * (logoImg.naturalHeight / logoImg.naturalWidth);
+    const lx = (clamp(logo.x, 0, 100) / 100) * (W - lw);
+    const ly = (clamp(logo.y, 0, 100) / 100) * (H - lh);
+    ctx.drawImage(logoImg, lx, ly, lw, lh);
+  }
+
   return m;
+}
+
+function clamp(v, lo, hi) {
+  return Math.min(hi, Math.max(lo, Number(v) || 0));
 }
 
 function hexToRgba(hex, alpha) {
