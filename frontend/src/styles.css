@@ -140,6 +140,8 @@ body {
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 .day-name {
   flex: 1;
@@ -150,6 +152,18 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
+}
+.day-width-select {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.day-width-ctl {
+  flex-shrink: 0;
 }
 
 .banner-section {

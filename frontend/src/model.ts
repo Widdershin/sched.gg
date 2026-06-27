@@ -45,6 +45,7 @@ export function makeDay(index = 0, partial: Partial<Day> = {}): Day {
     id: uid("day"),
     name: `Day ${index + 1}`,
     align: "left", // horizontal placement in the image
+    dayWidth: "auto", // "auto" = fit time range; number = % of canvas width
     banners: [], // full-width blocks spanning all lanes (e.g. "Doors open")
     lanes: [makeLane(0)],
     ...partial,
@@ -154,10 +155,17 @@ export function loadSchedule(): Schedule {
     if (!parsed || !Array.isArray(parsed.days) || parsed.days.length === 0) {
       return defaultSchedule();
     }
-    return parsed;
+    return normalizeSchedule(parsed);
   } catch {
     return defaultSchedule();
   }
+}
+
+export function normalizeSchedule(s: Schedule): Schedule {
+  for (const day of s.days) {
+    if (day.dayWidth == null) day.dayWidth = "auto";
+  }
+  return s;
 }
 
 export function saveSchedule(schedule: Schedule): void {

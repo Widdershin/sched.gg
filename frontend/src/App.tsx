@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent } from "react";
 import {
   loadSchedule,
   saveSchedule,
+  normalizeSchedule,
   defaultSchedule,
   makeDay,
   loadOutputSettings,
@@ -56,7 +57,7 @@ export default function App() {
   // Load a schedule from the server into the editor.
   const loadScheduleFromServer = async (id: string) => {
     const full = await api.getSchedule(id);
-    setSchedule(full.data);
+    setSchedule(normalizeSchedule(full.data));
     if (full.output) setOutput(full.output);
     setActiveDayId(full.data.days?.[0]?.id ?? null);
     setCurrentScheduleId(id);

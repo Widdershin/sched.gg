@@ -17,10 +17,13 @@ export interface Lane {
 
 export type DayAlign = "left" | "right";
 
+export type DayWidth = "auto" | number;
+
 export interface Day {
   id: string;
   name: string;
   align: DayAlign;
+  dayWidth: DayWidth;
   banners: Block[];
   lanes: Lane[];
 }

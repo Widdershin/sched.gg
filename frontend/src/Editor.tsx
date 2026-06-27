@@ -54,6 +54,44 @@ export default function Editor({ day, update }: { day: Day; update: UpdateFn }) 
         >
           {day.align === "right" ? "Align ⇥" : "Align ⇤"}
         </button>
+        <select
+          className="day-width-select"
+          value={day.dayWidth === "auto" ? "auto" : "manual"}
+          title="Day width mode"
+          onChange={(e) =>
+            setDay((d) => {
+              d.dayWidth = e.target.value === "auto" ? "auto" : 50;
+            })
+          }
+        >
+          <option value="auto">Auto width</option>
+          <option value="manual">Custom %</option>
+        </select>
+        {typeof day.dayWidth === "number" && (
+          <span className="ctl day-width-ctl">
+            <input
+              type="range"
+              min={5}
+              max={100}
+              value={day.dayWidth}
+              onChange={(e) =>
+                setDay((d) => (d.dayWidth = Number(e.target.value)))
+              }
+            />
+            <input
+              className="ctl-num"
+              type="number"
+              min={5}
+              max={100}
+              value={day.dayWidth}
+              onChange={(e) => {
+                const v = Math.min(100, Math.max(5, Number(e.target.value) || 5));
+                setDay((d) => (d.dayWidth = v));
+              }}
+            />
+            <span className="ctl-unit">%</span>
+          </span>
+        )}
         <button className="btn ghost danger" onClick={removeDay}>
           Delete day
         </button>

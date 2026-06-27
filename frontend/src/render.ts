@@ -177,15 +177,59 @@ function measureDaySection(day: Day, hScale = 1): Section {
 }
 
 // Pixel dimensions for the whole schedule (all days stacked). `hScale` only
-// affects horizontal (time) sizing; height is unaffected.
-export function measureSchedule(schedule: Schedule, hScale = 1): Measure {
+// affects horizontal (time) sizing for auto days; manual day widths are fixed
+// as a percentage of the canvas content width. Pass `targetWidth` to force the
+// overall canvas to a specific width (used by aspect-ratio fitting when all days
+// are manual).
+export function measureSchedule(
+  schedule: Schedule,
+  hScale = 1,
+  targetWidth?: number,
+): Measure {
   const days = schedule.days.length ? schedule.days : [];
-  const sections = days.map((d) => measureDaySection(d, hScale));
+
+  // Natural sections at the given hScale (used as-is for auto days).
+  const naturalSections = days.map((d) => measureDaySection(d, hScale));
+
+  // Compute the "auto" content width (max width of all auto days).
+  let autoContentW = 0;
+  for (let i = 0; i < days.length; i++) {
+    const dw = days[i].dayWidth;
+    if (dw === "auto") {
+      autoContentW = Math.max(autoContentW, naturalSections[i].w);
+    }
+  }
+  if (autoContentW === 0) autoContentW = 400;
+
+  // Content width used for manual day percentage calculations.
+  const contentBase = targetWidth != null
+    ? targetWidth - LAYOUT.pad * 2
+    : autoContentW;
+
+  // Build final sections — manual days get their width from the percentage.
+  const sections = days.map((day, i) => {
+    const dw = day.dayWidth;
+    if (dw === "auto") return naturalSections[i];
+
+    const pct = clamp(Number(dw), 5, 100);
+    const targetW = Math.round((contentBase * pct) / 100);
+    const targetTrackW = Math.max(targetW - LAYOUT.gutterW, 30);
+
+    const { min, max } = naturalSections[i];
+    const range = max - min;
+    const pxPerMin = range > 0 ? targetTrackW / range : LAYOUT.pxPerMin * hScale;
+    const laneCount = Math.max(day.lanes.length, 1);
+    const lanesH = laneCount * LAYOUT.laneH + (laneCount - 1) * LAYOUT.laneGap;
+    const h = LAYOUT.subtitleH + LAYOUT.timeHeaderH + lanesH;
+
+    return { w: targetW, h, min, max, trackW: targetTrackW, pxPerMin };
+  });
+
   const contentW = sections.reduce((acc, s) => Math.max(acc, s.w), 0);
+  const width = targetWidth != null
+    ? targetWidth
+    : LAYOUT.pad * 2 + (sections.length ? contentW : 400);
   const stacked = sections.reduce((acc, s) => acc + s.h, 0);
-  // Only floor the width for an empty schedule; otherwise honour the (possibly
-  // compressed) content width so aspect-ratio fitting can reach narrow targets.
-  const width = LAYOUT.pad * 2 + (sections.length ? contentW : 400);
   const height =
     LAYOUT.pad * 2 +
     titleHeight(schedule) +
@@ -247,14 +291,14 @@ function drawBlock(
   // Time range.
   if (hasTime) {
     ctx.fillStyle = THEME.muted;
-    ctx.font = `500 13px ${THEME.font}`;
+    ctx.font = `500 12px ${THEME.font}`;
     let timeText = `${formatTime(start, { compact: true })}–${formatTime(end, {
       compact: true,
     })}`;
     if (opts.hideEnd) {
       timeText = `${formatTime(start, { compact: true })}`;
     }
-    ctx.fillText(ellipsize(ctx, timeText, innerW), textX, textY);
+    ctx.fillText(timeText, textX, textY);
   }
   ctx.textAlign = "left"; // restore for the badges below
 
@@ -448,17 +492,30 @@ export function renderSchedule(
 ): Measure {
   // Natural layout, then solve for the time-axis factor that makes the content
   // width match the target ratio (height is independent of the factor).
+  // Auto days scale via hScale; manual days use the target canvas width directly.
   const base = measureSchedule(schedule, 1);
   let hScale = 1;
+  let forcedWidth: number | undefined;
   if (aspectRatio && aspectRatio > 0) {
     const targetW = base.height * aspectRatio;
-    const baseTrackMax = Math.max(...base.sections.map((s) => s.trackW), 1);
-    const targetTrack = targetW - LAYOUT.pad * 2 - LAYOUT.gutterW;
-    hScale = targetTrack / baseTrackMax;
-    if (!Number.isFinite(hScale) || hScale <= 0) hScale = 0.05;
+    const autoTracks = schedule.days
+      .map((d, i) =>
+        d.dayWidth === "auto" ? base.sections[i]?.trackW ?? 0 : 0,
+      )
+      .filter((w) => w > 0);
+    if (autoTracks.length > 0) {
+      const baseTrackMax = Math.max(...autoTracks);
+      const targetTrack = targetW - LAYOUT.pad * 2 - LAYOUT.gutterW;
+      hScale = targetTrack / baseTrackMax;
+      if (!Number.isFinite(hScale) || hScale <= 0) hScale = 0.05;
+    } else {
+      forcedWidth = targetW;
+    }
   }
-
-  const m = hScale === 1 ? base : measureSchedule(schedule, hScale);
+  const m =
+    hScale === 1 && forcedWidth == null
+      ? base
+      : measureSchedule(schedule, hScale, forcedWidth);
   const W = m.width;
   const H = m.height;
 
