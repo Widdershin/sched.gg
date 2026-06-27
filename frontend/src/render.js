@@ -206,21 +206,36 @@ function drawDaySection(ctx, day, x, y, section) {
         textY,
       );
 
-      // Stream label badge (bottom of block).
-      if (block.stream) {
+      // Stream label badges (bottom of block). Primary is a solid accent pill;
+      // the secondary is an outlined pill so the two read distinctly.
+      const streams = [block.stream, block.stream2].filter(Boolean);
+      if (streams.length) {
         ctx.font = `600 12px ${THEME.font}`;
-        const label = ellipsize(ctx, block.stream, innerW - 18);
-        const tw = ctx.measureText(label).width;
-        const badgeW = tw + 18;
         const badgeH = 22;
-        const lbx = bx + 12;
         const lby = by + bh - badgeH - 8;
+        const rightEdge = bx + w - 8;
+        let lbx = bx + 12;
         if (lby > textY + 4) {
-          ctx.fillStyle = accent;
-          roundRect(ctx, lbx, lby, badgeW, badgeH, 11);
-          ctx.fill();
-          ctx.fillStyle = "#0e1220";
-          ctx.fillText(label, lbx + 9, lby + 15);
+          streams.forEach((text, idx) => {
+            const avail = rightEdge - lbx - 18;
+            if (avail < 16) return; // no room left for another pill
+            const label = ellipsize(ctx, text, avail);
+            const badgeW = ctx.measureText(label).width + 18;
+            if (idx === 0) {
+              ctx.fillStyle = accent;
+              roundRect(ctx, lbx, lby, badgeW, badgeH, 11);
+              ctx.fill();
+              ctx.fillStyle = "#0e1220";
+            } else {
+              roundRect(ctx, lbx, lby, badgeW, badgeH, 11);
+              ctx.strokeStyle = accent;
+              ctx.lineWidth = 1.5;
+              ctx.stroke();
+              ctx.fillStyle = accent;
+            }
+            ctx.fillText(label, lbx + 9, lby + 15);
+            lbx += badgeW + 6;
+          });
         }
       }
     }

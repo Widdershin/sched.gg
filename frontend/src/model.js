@@ -39,6 +39,7 @@ export function makeBlock(partial = {}) {
     start: "12:00",
     end: "13:00",
     stream: "",
+    stream2: "",
     ...partial,
   };
 }

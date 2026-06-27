@@ -192,6 +192,15 @@ function BlockEditor({ block, laneId, dayId, update }) {
             onChange={(e) => setBlock((b) => (b.stream = e.target.value))}
           />
         </label>
+        <label className="field grow">
+          <span>2nd stream label</span>
+          <input
+            type="text"
+            value={block.stream2 ?? ""}
+            placeholder="optional"
+            onChange={(e) => setBlock((b) => (b.stream2 = e.target.value))}
+          />
+        </label>
         <button className="btn icon" onClick={removeBlock} title="Remove block">
           ✕
         </button>
