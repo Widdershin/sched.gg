@@ -32,4 +32,23 @@ share.get("/share/:token", (c) => {
   });
 });
 
+// Public: resolve a share token to the schedule's logo. No auth required.
+share.get("/share/:token/logo", (c) => {
+  const row = db
+    .prepare(
+      `SELECT s.logo AS logo
+         FROM share_tokens t JOIN schedules s ON s.id = t.schedule_id
+        WHERE t.token = ?
+          AND t.revoked = 0
+          AND (t.expires_at IS NULL OR t.expires_at > ?)`,
+    )
+    .get(c.req.param("token"), Date.now()) as
+    | { logo: Buffer | null }
+    | undefined;
+  if (!row || !row.logo) {
+    return c.body(null, 204);
+  }
+  return c.body(new Uint8Array(row.logo), 200, { "Content-Type": "image/png" });
+});
+
 export default share;

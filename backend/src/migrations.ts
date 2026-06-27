@@ -1,7 +1,13 @@
 import type { DatabaseSync } from "node:sqlite";
 
+interface Migration {
+  version: number;
+  sql: string;
+  run?: (db: DatabaseSync) => void;
+}
+
 // Ordered, idempotent migrations. Each runs once, tracked in schema_migrations.
-const MIGRATIONS: { version: number; sql: string }[] = [
+const MIGRATIONS: Migration[] = [
   {
     version: 1,
     sql: `
@@ -66,7 +72,36 @@ const MIGRATIONS: { version: number; sql: string }[] = [
       CREATE INDEX idx_share_schedule ON share_tokens(schedule_id);
     `,
   },
+  {
+    version: 2,
+    sql: `ALTER TABLE schedules ADD COLUMN logo BLOB;`,
+    run: migrateExistingLogos,
+  },
 ];
+
+function migrateExistingLogos(db: DatabaseSync): void {
+  const rows = db
+    .prepare("SELECT id, data FROM schedules WHERE data LIKE '%data:image/png;base64,%'")
+    .all() as { id: string; data: string }[];
+  for (const row of rows) {
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(row.data);
+    } catch {
+      continue;
+    }
+    const logo = parsed.logo as { src?: string; size?: number; x?: number; y?: number } | null | undefined;
+    if (!logo?.src?.startsWith("data:image/png;base64,")) continue;
+    const base64 = logo.src.slice("data:image/png;base64,".length);
+    const buf = Buffer.from(base64, "base64");
+    delete logo.src;
+    db.prepare("UPDATE schedules SET data = ?, logo = ? WHERE id = ?").run(
+      JSON.stringify(parsed),
+      buf,
+      row.id,
+    );
+  }
+}
 
 export function migrate(db: DatabaseSync): void {
   db.exec(
@@ -85,6 +120,7 @@ export function migrate(db: DatabaseSync): void {
     db.exec("BEGIN");
     try {
       db.exec(m.sql);
+      if (m.run) m.run(db);
       db.prepare(
         "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
       ).run(m.version, Date.now());

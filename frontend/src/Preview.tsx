@@ -6,6 +6,7 @@ import {
   type SetStateAction,
 } from "react";
 import { renderSchedule, onAssetsReady } from "./render";
+import { api } from "./api";
 import type { OutputSettings, Schedule, UpdateFn } from "./types";
 
 // Aspect modes. "fit" sizes tightly to the content; presets fix the ratio;
@@ -51,6 +52,14 @@ function fileToLogoDataUrl(file: File, max = 1000): Promise<string> {
 const DEFAULT_LOGO = { size: 18, x: 2, y: 2 };
 const RENDER_DEBOUNCE_MS = 150;
 
+function dataUrlToBlob(dataUrl: string): Blob | null {
+  const match = dataUrl.match(/^data:(.+);base64,(.+)$/);
+  if (!match) return null;
+  const mime = match[1];
+  const bytes = Uint8Array.from(atob(match[2]), (c) => c.charCodeAt(0));
+  return new Blob([bytes], { type: mime });
+}
+
 interface SliderProps {
   label: string;
   value: number;
@@ -92,9 +101,10 @@ interface Props {
   update: UpdateFn;
   output: OutputSettings;
   setOutput: Dispatch<SetStateAction<OutputSettings>>;
+  scheduleId?: string | null;
 }
 
-export default function Preview({ schedule, update, output, setOutput }: Props) {
+export default function Preview({ schedule, update, output, setOutput, scheduleId }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null);
@@ -160,6 +170,11 @@ export default function Preview({ schedule, update, output, setOutput }: Props) 
       update((s) => {
         s.logo = { ...DEFAULT_LOGO, ...(s.logo || {}), src };
       });
+      // Upload the downscaled PNG to the server immediately.
+      if (scheduleId) {
+        const blob = dataUrlToBlob(src);
+        if (blob) api.uploadLogo(scheduleId, blob).catch(() => {});
+      }
     } catch {
       alert("Could not load that image.");
     }
@@ -170,7 +185,10 @@ export default function Preview({ schedule, update, output, setOutput }: Props) 
       if (s.logo) s.logo[key] = value;
     });
 
-  const removeLogo = () => update((s) => (s.logo = null));
+  const removeLogo = () => {
+    if (scheduleId) api.deleteLogo(scheduleId).catch(() => {});
+    update((s) => (s.logo = null));
+  };
 
   return (
     <div className="preview">

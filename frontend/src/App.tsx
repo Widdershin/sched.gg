@@ -39,6 +39,7 @@ export default function App() {
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const logoBlobUrlRef = useRef<string | null>(null);
 
   // Server-synced schedule list + the one currently being edited.
   const [scheduleList, setScheduleList] = useState<ScheduleMeta[]>([]);
@@ -57,7 +58,24 @@ export default function App() {
   // Load a schedule from the server into the editor.
   const loadScheduleFromServer = async (id: string) => {
     const full = await api.getSchedule(id);
-    setSchedule(normalizeSchedule(full.data));
+    const normalized = normalizeSchedule(full.data);
+
+    // Load the logo as a blob URL if one exists on the server.
+    if (normalized.logo) {
+      try {
+        const blob = await api.getLogoBlob(id);
+        if (blob) {
+          if (logoBlobUrlRef.current) URL.revokeObjectURL(logoBlobUrlRef.current);
+          const url = URL.createObjectURL(blob);
+          logoBlobUrlRef.current = url;
+          normalized.logo.src = url;
+        }
+      } catch {
+        // Logo fetch failed — leave src undefined, title will show instead.
+      }
+    }
+
+    setSchedule(normalized);
     if (full.output) setOutput(full.output);
     setActiveDayId(full.data.days?.[0]?.id ?? null);
     setCurrentScheduleId(id);
@@ -100,12 +118,17 @@ export default function App() {
   }, [auth.user]);
 
   // Debounced server autosave of the active schedule (data + output only; the
-  // list name is changed explicitly via Rename).
+  // list name is changed explicitly via Rename). Logo src is stripped — the
+  // logo PNG is uploaded separately via the logo endpoint.
   useEffect(() => {
     if (!auth.user || !currentScheduleId) return;
     const t = setTimeout(() => {
+      const clean = structuredClone(schedule);
+      if (clean.logo) {
+        delete (clean.logo as unknown as Record<string, unknown>).src;
+      }
       api
-        .updateSchedule(currentScheduleId, { data: schedule, output })
+        .updateSchedule(currentScheduleId, { data: clean, output })
         .catch(() => {});
     }, SERVER_SAVE_DEBOUNCE_MS);
     return () => clearTimeout(t);
@@ -415,6 +438,7 @@ export default function App() {
             update={update}
             output={output}
             setOutput={setOutput}
+            scheduleId={currentScheduleId}
           />
         </section>
       </main>

@@ -131,4 +131,54 @@ schedules.post("/schedules/:id/share", requireCsrf, (c) => {
   return c.json({ token: t, url: `/?share=${t}` });
 });
 
+// Logo upload — raw PNG bytes, max 1 MB.
+schedules.put("/schedules/:id/logo", requireCsrf, async (c) => {
+  const id = c.req.param("id");
+  const owned = db
+    .prepare("SELECT id FROM schedules WHERE id = ? AND user_id = ?")
+    .get(id, userId(c));
+  if (!owned) return c.json({ error: "not found" }, 404);
+
+  const buf = Buffer.from(await c.req.arrayBuffer());
+  if (buf.length === 0 || buf.length > 1_000_000) {
+    return c.json({ error: "invalid body" }, 400);
+  }
+  const now = Date.now();
+  db.prepare("UPDATE schedules SET logo = ?, updated_at = ? WHERE id = ?").run(
+    buf,
+    now,
+    id,
+  );
+  return c.json({ ok: true, updated_at: now });
+});
+
+// Logo deletion.
+schedules.delete("/schedules/:id/logo", requireCsrf, (c) => {
+  const id = c.req.param("id");
+  const owned = db
+    .prepare("SELECT id FROM schedules WHERE id = ? AND user_id = ?")
+    .get(id, userId(c));
+  if (!owned) return c.json({ error: "not found" }, 404);
+
+  const now = Date.now();
+  db.prepare("UPDATE schedules SET logo = NULL, updated_at = ? WHERE id = ?").run(
+    now,
+    id,
+  );
+  return c.json({ ok: true, updated_at: now });
+});
+
+// Logo download — returns raw PNG bytes.
+schedules.get("/schedules/:id/logo", (c) => {
+  const row = db
+    .prepare("SELECT logo FROM schedules WHERE id = ? AND user_id = ?")
+    .get(c.req.param("id"), userId(c)) as
+    | { logo: Buffer | null }
+    | undefined;
+  if (!row || !row.logo) {
+    return c.body(null, 204);
+  }
+  return c.body(new Uint8Array(row.logo), 200, { "Content-Type": "image/png" });
+});
+
 export default schedules;

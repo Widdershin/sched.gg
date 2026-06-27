@@ -94,4 +94,58 @@ export const api = {
 
   getShared: (token: string) =>
     request<SharedSchedule>("GET", `/share/${token}`),
+
+  // Logo endpoints (binary, not JSON).
+  uploadLogo: async (id: string, blob: Blob) => {
+    const tok = await ensureCsrf();
+    const headers: Record<string, string> = { "content-type": blob.type || "image/png" };
+    if (tok) headers["x-csrf-token"] = tok;
+    const res = await fetch(`${BASE}/schedules/${id}/logo`, {
+      method: "PUT",
+      credentials: "include",
+      headers,
+      body: blob,
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(
+        (json as { error?: string }).error || `upload failed (${res.status})`,
+      );
+    }
+    return res.json() as Promise<{ ok: true; updated_at: number }>;
+  },
+
+  getLogoBlob: async (id: string): Promise<Blob | null> => {
+    const res = await fetch(`${BASE}/schedules/${id}/logo`, {
+      credentials: "include",
+    });
+    if (res.status === 204) return null;
+    if (!res.ok) throw new Error(`failed to load logo (${res.status})`);
+    return res.blob();
+  },
+
+  deleteLogo: async (id: string) => {
+    const tok = await ensureCsrf();
+    const headers: Record<string, string> = {};
+    if (tok) headers["x-csrf-token"] = tok;
+    const res = await fetch(`${BASE}/schedules/${id}/logo`, {
+      method: "DELETE",
+      credentials: "include",
+      headers,
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(
+        (json as { error?: string }).error || `delete failed (${res.status})`,
+      );
+    }
+    return res.json() as Promise<{ ok: true; updated_at: number }>;
+  },
+
+  getSharedLogoBlob: async (token: string): Promise<Blob | null> => {
+    const res = await fetch(`${BASE}/share/${token}/logo`);
+    if (res.status === 204) return null;
+    if (!res.ok) throw new Error(`failed to load logo (${res.status})`);
+    return res.blob();
+  },
 };

@@ -24,6 +24,7 @@ export default function ShareView({ token }: { token: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [state, setState] = useState<ShareState>({ status: "loading" });
   const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null);
+  const [logoSrc, setLogoSrc] = useState<string | null>(null);
   const [assetTick, setAssetTick] = useState(0);
   useEffect(() => onAssetsReady(() => setAssetTick((n) => n + 1)), []);
 
@@ -43,7 +44,25 @@ export default function ShareView({ token }: { token: string }) {
     };
   }, [token]);
 
-  const logoSrc = state.status === "ok" ? state.data.logo?.src : undefined;
+  // Fetch the logo blob if the shared schedule has one.
+  useEffect(() => {
+    if (state.status !== "ok" || !state.data.logo) return;
+    let cancelled = false;
+    let blobUrl: string | null = null;
+    api
+      .getSharedLogoBlob(token)
+      .then((blob) => {
+        if (cancelled || !blob) return;
+        blobUrl = URL.createObjectURL(blob);
+        setLogoSrc(blobUrl);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [state.status, token]);
+
   useEffect(() => {
     if (!logoSrc) {
       setLogoImg(null);
@@ -57,15 +76,18 @@ export default function ShareView({ token }: { token: string }) {
   // Render whenever data / logo are ready.
   useEffect(() => {
     if (state.status !== "ok" || !canvasRef.current) return;
+    const data = logoSrc && state.data.logo
+      ? { ...state.data, logo: { ...state.data.logo, src: logoSrc } }
+      : state.data;
     const scale = state.output?.scale ?? 2;
     renderSchedule(
       canvasRef.current,
-      state.data,
+      data,
       scale,
       resolveRatio(state.output),
       logoImg,
     );
-  }, [state, logoImg, assetTick]);
+  }, [state, logoImg, assetTick, logoSrc]);
 
   const download = () => {
     const canvas = canvasRef.current;
