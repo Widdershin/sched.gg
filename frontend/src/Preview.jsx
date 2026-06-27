@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 import { renderSchedule } from "./render.js";
-import { loadOutputSettings, saveOutputSettings } from "./model.js";
 
 // Aspect modes. "fit" sizes tightly to the content; presets fix the ratio;
 // "custom" uses the W:H controls.
@@ -70,19 +69,15 @@ function SliderControl({ label, value, min, max, unit = "", onChange }) {
   );
 }
 
-export default function Preview({ schedule, update }) {
+export default function Preview({ schedule, update, output, setOutput }) {
   const canvasRef = useRef(null);
   const logoInputRef = useRef(null);
-  const [output, setOutput] = useState(loadOutputSettings);
   const [logoImg, setLogoImg] = useState(null);
 
   const logo = schedule.logo;
 
-  // Persist output settings (aspect mode + custom W/H + resolution) across sessions.
-  useEffect(() => {
-    saveOutputSettings(output);
-  }, [output]);
-
+  // Output settings (aspect + resolution) are owned by App so they persist and
+  // sync alongside the schedule.
   const setOutputField = (key, value) =>
     setOutput((prev) => ({ ...prev, [key]: value }));
 

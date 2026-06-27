@@ -4,13 +4,23 @@ import {
   saveSchedule,
   defaultSchedule,
   makeDay,
+  loadOutputSettings,
+  saveOutputSettings,
 } from "./model.js";
 import Editor from "./Editor.jsx";
 import Preview from "./Preview.jsx";
 import { scheduleToCsv, csvToSchedule } from "./csv.js";
+import { useAuth } from "./AuthContext.jsx";
+import AccountMenu from "./AccountMenu.jsx";
+import ScheduleList from "./ScheduleList.jsx";
+import { api } from "./api.js";
+
+const SERVER_SAVE_DEBOUNCE_MS = 800;
 
 export default function App() {
+  const auth = useAuth();
   const [schedule, setSchedule] = useState(loadSchedule);
+  const [output, setOutput] = useState(loadOutputSettings);
   const [activeDayId, setActiveDayId] = useState(
     () => schedule.days[0]?.id ?? null,
   );
@@ -18,10 +28,74 @@ export default function App() {
   const [dragOverId, setDragOverId] = useState(null);
   const importInputRef = useRef(null);
 
-  // Persist on every change.
+  // Server-synced schedule list + the one currently being edited.
+  const [scheduleList, setScheduleList] = useState([]);
+  const [currentScheduleId, setCurrentScheduleId] = useState(null);
+
+  // Persist locally on every change (offline fallback, always on).
   useEffect(() => {
     saveSchedule(schedule);
   }, [schedule]);
+  useEffect(() => {
+    saveOutputSettings(output);
+  }, [output]);
+
+  // Load a schedule from the server into the editor.
+  const loadScheduleFromServer = async (id) => {
+    const full = await api.getSchedule(id);
+    setSchedule(full.data);
+    if (full.output) setOutput(full.output);
+    setActiveDayId(full.data.days?.[0]?.id ?? null);
+    setCurrentScheduleId(id);
+  };
+
+  // On sign-in, load the user's schedules (adopting the local one if empty).
+  // On sign-out, drop the server list back to local-only.
+  useEffect(() => {
+    if (!auth.user) {
+      setScheduleList([]);
+      setCurrentScheduleId(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { schedules } = await api.listSchedules();
+        if (cancelled) return;
+        if (schedules.length) {
+          setScheduleList(schedules);
+          await loadScheduleFromServer(schedules[0].id);
+        } else {
+          const created = await api.createSchedule({
+            name: schedule.title || "My Tournament",
+            data: schedule,
+            output,
+          });
+          if (cancelled) return;
+          setScheduleList([created]);
+          setCurrentScheduleId(created.id);
+        }
+      } catch {
+        /* stay in local-only mode on error */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.user]);
+
+  // Debounced server autosave of the active schedule (data + output only; the
+  // list name is changed explicitly via Rename).
+  useEffect(() => {
+    if (!auth.user || !currentScheduleId) return;
+    const t = setTimeout(() => {
+      api
+        .updateSchedule(currentScheduleId, { data: schedule, output })
+        .catch(() => {});
+    }, SERVER_SAVE_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [schedule, output, auth.user, currentScheduleId]);
 
   // Keep the active day valid if days are added/removed.
   useEffect(() => {
@@ -55,6 +129,77 @@ export default function App() {
       const day = makeDay(s.days.length);
       s.days.push(day);
     });
+  };
+
+  // --- Server schedule management -------------------------------------------
+  const selectSchedule = (id) => {
+    if (id && id !== currentScheduleId) {
+      loadScheduleFromServer(id).catch((e) => alert(e.message));
+    }
+  };
+
+  const createServerSchedule = async () => {
+    const fresh = defaultSchedule();
+    try {
+      const created = await api.createSchedule({
+        name: fresh.title,
+        data: fresh,
+        output,
+      });
+      setScheduleList((prev) => [created, ...prev]);
+      setSchedule(fresh);
+      setActiveDayId(fresh.days[0].id);
+      setCurrentScheduleId(created.id);
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const renameSchedule = async (id, name) => {
+    try {
+      await api.updateSchedule(id, { name });
+      setScheduleList((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, name } : s)),
+      );
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const deleteSchedule = async (id) => {
+    try {
+      await api.deleteSchedule(id);
+      const remaining = scheduleList.filter((s) => s.id !== id);
+      setScheduleList(remaining);
+      if (currentScheduleId === id) {
+        if (remaining.length) {
+          await loadScheduleFromServer(remaining[0].id);
+        } else {
+          const fresh = defaultSchedule();
+          setSchedule(fresh);
+          setActiveDayId(fresh.days[0].id);
+          setCurrentScheduleId(null);
+        }
+      }
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const shareSchedule = async () => {
+    if (!currentScheduleId) return;
+    try {
+      const { token } = await api.createShare(currentScheduleId);
+      const url = `${window.location.origin}/?share=${token}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        alert(`Share link copied to clipboard:\n${url}`);
+      } catch {
+        prompt("Share link:", url);
+      }
+    } catch (e) {
+      alert(e.message);
+    }
   };
 
   const exportCsv = () => {
@@ -185,6 +330,29 @@ export default function App() {
             e.target.value = ""; // allow re-importing the same file
           }}
         />
+        <div className="topbar-account">
+          {auth.user && (
+            <>
+              <ScheduleList
+                schedules={scheduleList}
+                currentId={currentScheduleId}
+                onSelect={selectSchedule}
+                onCreate={createServerSchedule}
+                onRename={renameSchedule}
+                onDelete={deleteSchedule}
+              />
+              <button
+                className="btn ghost"
+                onClick={shareSchedule}
+                disabled={!currentScheduleId}
+                title="Create a public share link"
+              >
+                Share
+              </button>
+            </>
+          )}
+          <AccountMenu />
+        </div>
       </header>
 
       <div className="tabs">
@@ -225,7 +393,12 @@ export default function App() {
           )}
         </section>
         <section className="preview-pane">
-          <Preview schedule={schedule} update={update} />
+          <Preview
+            schedule={schedule}
+            update={update}
+            output={output}
+            setOutput={setOutput}
+          />
         </section>
       </main>
     </div>

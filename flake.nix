@@ -31,7 +31,11 @@
           };
 
           # Values here are available as loader.args.<name> in fantail.nix.
+          # The static build cannot contain the `process` backend route (Fantail
+          # throws on process routes in a static build), so exclude it here.
+          # The backend runs only under `nix run .#fantail` (and `fantail docker`).
           args = {
+            backend = "false";
           };
         };
       });

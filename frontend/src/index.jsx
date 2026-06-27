@@ -1,12 +1,27 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
+import ShareView from "./ShareView.jsx";
+import { AuthProvider } from "./AuthContext.jsx";
 import "./styles.css";
+
+// `/?share=TOKEN` opens a read-only shared schedule (served by the existing
+// `get "/"` route, so no Fantail routing change is needed). Otherwise the full
+// editor, wrapped in the auth provider.
+function Root() {
+  const token = new URLSearchParams(window.location.search).get("share");
+  if (token) return <ShareView token={token} />;
+  return (
+    <AuthProvider>
+      <App />
+    </AuthProvider>
+  );
+}
 
 // Mount the app and return a teardown function.
 function startApp() {
   const root = createRoot(document.getElementById("root"));
-  root.render(<App />);
+  root.render(<Root />);
   return () => root.unmount();
 }
 

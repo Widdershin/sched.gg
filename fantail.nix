@@ -1,52 +1,56 @@
 {
   routes =
-    { loader, get }:
+    { loader, get, process }:
     let
       pkgs = loader.pkgs;
 
-      # Manifest-only source: just the files that determine the dependency tree.
-      # Keeping this separate means editing app code under frontend/src does NOT
-      # invalidate the node_modules derivation below.
-      manifest = pkgs.runCommand "sched-gg-manifest" { } ''
-        mkdir -p $out
-        cp ${./frontend/package.json} $out/package.json
-        cp ${./frontend/package-lock.json} $out/package-lock.json
-      '';
+      # Shared helper: build an offline npm cache + node_modules from a project's
+      # package.json + package-lock.json only, so app-code edits never trigger a
+      # dependency reinstall. Returns { nodeModules, node }.
+      # Regenerate a hash when deps change with:
+      #   nix run nixpkgs#prefetch-npm-deps -- <project>/package-lock.json
+      mkNodeModules =
+        { name, packageJson, packageLock, hash, node }:
+        let
+          manifest = pkgs.runCommand "${name}-manifest" { } ''
+            mkdir -p $out
+            cp ${packageJson} $out/package.json
+            cp ${packageLock} $out/package-lock.json
+          '';
+          npmDeps = pkgs.fetchNpmDeps {
+            name = "${name}-npm-deps";
+            src = manifest;
+            inherit hash;
+          };
+        in
+        pkgs.stdenv.mkDerivation {
+          name = "${name}-node-modules";
+          src = manifest;
+          nativeBuildInputs = [ node pkgs.npmHooks.npmConfigHook ];
+          inherit npmDeps;
+          dontBuild = true;
+          installPhase = ''
+            mkdir -p $out
+            cp -r node_modules $out/node_modules
+          '';
+        };
 
-      # Offline npm cache. Only re-derived when package-lock.json changes.
-      # Regenerate the hash when dependencies change with:
-      #   nix run nixpkgs#prefetch-npm-deps -- frontend/package-lock.json
-      npmDeps = pkgs.fetchNpmDeps {
-        name = "sched-gg-npm-deps";
-        src = manifest;
+      # --- Frontend (React, esbuild → bundle.js + bundle.css) -----------------
+      frontendNodeModules = mkNodeModules {
+        name = "sched-gg-frontend";
+        packageJson = ./frontend/package.json;
+        packageLock = ./frontend/package-lock.json;
         hash = "sha256-yhRclkAQMVzznYb5aeAu9/0Hm7EEjFqczk3wGte6Yxg=";
+        node = pkgs.nodejs;
       };
 
-      # Dependency-install derivation. The npmConfigHook runs `npm ci`, leaving a
-      # node_modules tree we capture. Cached independently of the app source, so
-      # code changes never trigger a reinstall.
-      nodeModules = pkgs.stdenv.mkDerivation {
-        name = "sched-gg-node-modules";
-        src = manifest;
-        nativeBuildInputs = [ pkgs.nodejs pkgs.npmHooks.npmConfigHook ];
-        inherit npmDeps;
-        dontBuild = true;
-        installPhase = ''
-          mkdir -p $out
-          cp -r node_modules $out/node_modules
-        '';
-      };
-
-      # Build derivation. Reuses the prebuilt node_modules and only runs esbuild,
-      # so a code change is a fast bundle-only rebuild.
-      # `npm run build` produces bundle.js + bundle.css; we keep just those.
       frontend = pkgs.stdenv.mkDerivation {
         name = "sched-gg-frontend";
         src = ./frontend;
         nativeBuildInputs = [ pkgs.nodejs ];
         buildPhase = ''
           export HOME="$TMPDIR"
-          ln -s ${nodeModules}/node_modules node_modules
+          ln -s ${frontendNodeModules}/node_modules node_modules
           npm run build
         '';
         installPhase = ''
@@ -54,6 +58,43 @@
           cp bundle.js bundle.css $out/
         '';
       };
+
+      # --- Backend (TypeScript, esbuild → single dist/server.js) --------------
+      backendNodeModules = mkNodeModules {
+        name = "sched-gg-backend";
+        packageJson = ./backend/package.json;
+        packageLock = ./backend/package-lock.json;
+        hash = "sha256-6osW/CPvRe/2nIW1a6CkyXlteBw+aCBEXA8uiFgw2YU=";
+        node = pkgs.nodejs_24;
+      };
+
+      backend = pkgs.stdenv.mkDerivation {
+        name = "sched-gg-backend";
+        src = ./backend;
+        nativeBuildInputs = [ pkgs.nodejs_24 ];
+        buildPhase = ''
+          export HOME="$TMPDIR"
+          ln -s ${backendNodeModules}/node_modules node_modules
+          npm run build
+        '';
+        installPhase = ''
+          mkdir -p $out
+          cp dist/server.js $out/server.js
+        '';
+      };
+
+      # The process supervisor executes this file directly, so it must be a
+      # single executable. DATA_DIR (and secrets) are inherited from the env that
+      # launched `nix run .#fantail`.
+      backendServer = pkgs.writeShellScript "sched-gg-backend-server" ''
+        export DATA_DIR="''${DATA_DIR:-$HOME/.local/share/sched.gg}"
+        exec ${pkgs.nodejs_24}/bin/node --experimental-sqlite ${backend}/server.js
+      '';
+
+      # Static builds (`nix build .#fantailProject`) throw on process routes, so
+      # the backend is gated out there via `args.backend = "false"` (see flake.nix)
+      # and included by default under `nix run .#fantail`.
+      enableBackend = (loader.args.backend or "true") != "false";
     in
     [
       # App shell. References /js/bundle.js and /js/bundle.css.
@@ -61,7 +102,8 @@
 
       # Compiled JS + CSS bundle.
       (get "/js" frontend)
-    ];
+    ]
+    ++ pkgs.lib.optional enableBackend (process "/api" backendServer);
 
   fantailSchemaVersion = 1;
 }

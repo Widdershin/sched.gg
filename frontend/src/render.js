@@ -153,12 +153,16 @@ function drawBlock(ctx, block, x, y, w, h, accent, opts = {}) {
   if (hasTime) {
     ctx.fillStyle = THEME.muted;
     ctx.font = `500 13px ${THEME.font}`;
+    let timeText = `${formatTime(start, { compact: true })}–${formatTime(end, {compact: true})}`;
+
+    if (opts.hideEnd) {
+      timeText = `${formatTime(start, { compact: true })}`;
+    };
+
     ctx.fillText(
       ellipsize(
         ctx,
-        `${formatTime(start, { compact: true })}–${formatTime(end, {
-          compact: true,
-        })}`,
+        timeText,
         innerW,
       ),
       textX,
@@ -264,7 +268,7 @@ function drawDaySection(ctx, day, x, y, section) {
       blockW(start, end),
       lanesBottom - lanesTop - INSET * 2,
       BANNER_COLOR,
-      { center: true },
+      { center: true, hideEnd: true },
     );
   }
 

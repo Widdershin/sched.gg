@@ -33,10 +33,17 @@ body {
 .topbar {
   display: flex;
   align-items: center;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
   padding: 12px 20px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
+}
+.topbar-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
 }
 .brand {
   display: flex;
@@ -390,4 +397,99 @@ body {
     border-right: none;
     border-bottom: 1px solid var(--border);
   }
+}
+
+/* Account menu + schedule list */
+.account-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.account-status {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.account-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 240px;
+  padding: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.account-input {
+  padding: 7px 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+.account-actions {
+  display: flex;
+  gap: 8px;
+}
+.account-actions .btn {
+  flex: 1;
+}
+.account-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+.startgg-btn {
+  text-align: center;
+  text-decoration: none;
+  background: #3f2a66;
+  border-color: #5a3f8c;
+  color: #fff;
+}
+
+.schedule-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.schedule-select {
+  max-width: 180px;
+  padding: 7px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* Share view */
+.share-view {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.share-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.share-header .brand {
+  flex: 1;
+}
+.share-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 16px;
 }
