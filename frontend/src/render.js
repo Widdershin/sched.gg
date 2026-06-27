@@ -18,7 +18,7 @@ const LAYOUT = {
   titleH: 70, // shared tournament title block at the top
   subtitleH: 38, // per-day name
   timeHeaderH: 36,
-  gutterW: 18, // slim left column for the lane colour accent
+  gutterW: 0, // no left gutter (lanes are distinguished by block colour)
   laneH: 92,
   laneGap: 12,
   dayGap: 40, // vertical space between day sections
@@ -152,11 +152,6 @@ function drawDaySection(ctx, day, x, y, section) {
     // Row background spanning the time track.
     ctx.fillStyle = hexToRgba("#ffffff", 0.02);
     roundRect(ctx, gridLeft, laneY, section.trackW, LAYOUT.laneH, 8);
-    ctx.fill();
-
-    // Lane colour accent in the slim left gutter.
-    ctx.fillStyle = accent;
-    roundRect(ctx, x, laneY, 6, LAYOUT.laneH, 3);
     ctx.fill();
 
     // Blocks.
