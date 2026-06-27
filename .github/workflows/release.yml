@@ -39,6 +39,13 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v16
 
+      # Pull prebuilt fantail/deps from the fantail Cachix cache to speed builds
+      # (pull-only — no auth token, we never push).
+      - name: Use the fantail Cachix cache
+        uses: cachix/cachix-action@v15
+        with:
+          name: fantail
+
       # nix needs SSH access to the private fantail flake input
       # (git+ssh://git@github.com/Widdershin/fantail).
       - name: Set up SSH for the fantail flake input
