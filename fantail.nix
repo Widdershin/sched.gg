@@ -58,6 +58,10 @@
         installPhase = ''
           mkdir -p $out
           cp bundle.js bundle.css $out/
+          cp ${./fonts}/Inter-Regular.ttf $out/
+          cp ${./fonts}/Inter-Medium.ttf $out/
+          cp ${./fonts}/Inter-Bold.ttf $out/
+          cp ${./fonts}/Inter-ExtraBold.ttf $out/
         '';
       };
 
@@ -73,14 +77,16 @@
       backend = pkgs.stdenv.mkDerivation {
         name = "sched-gg-backend";
         src = ./backend;
-        nativeBuildInputs = [ pkgs.nodejs_24 pkgs.inter ];
+        nativeBuildInputs = [ pkgs.nodejs_24 ];
         buildPhase = ''
           export HOME="$TMPDIR"
           ln -s ${backendNodeModules}/node_modules node_modules
           mkdir -p ../shared
           cp -r ${./shared}/* ../shared/
-          cp ${pkgs.inter}/share/fonts/truetype/InterVariable.ttf ../shared/Inter.ttf
-          chmod -R +w ../shared
+          cp ${./fonts}/Inter-Bold.ttf ../shared/
+          cp ${./fonts}/Inter-ExtraBold.ttf ../shared/
+          cp ${./fonts}/Inter-Medium.ttf ../shared/
+          cp ${./fonts}/Inter-Regular.ttf ../shared/
           npm run build
         '';
         installPhase = ''

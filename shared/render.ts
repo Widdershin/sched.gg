@@ -165,6 +165,7 @@ export function measureSchedule(
   schedule: Schedule,
   hScale = 1,
   targetWidth?: number,
+  hasLogo?: boolean,
 ): Measure {
   const days = schedule.days.length ? schedule.days : [];
 
@@ -207,14 +208,14 @@ export function measureSchedule(
   const stacked = sections.reduce((acc, s) => acc + s.h, 0);
   const height =
     LAYOUT.pad * 2 +
-    titleHeight(schedule) +
+    titleHeight(!!hasLogo) +
     stacked +
     Math.max(sections.length - 1, 0) * LAYOUT.dayGap;
   return { width, height, sections };
 }
 
-function titleHeight(schedule: Schedule): number {
-  return schedule.logo?.src ? 0 : LAYOUT.titleH;
+function titleHeight(hasLogo: boolean): number {
+  return hasLogo ? 0 : LAYOUT.titleH;
 }
 
 // --- Drawing -----------------------------------------------------------------
@@ -448,6 +449,7 @@ export interface RenderOpts {
   measure: Measure;
   W: number;
   H: number;
+  titleH: number;
   logoImg: ImageLike | null;
   twitchGlyph: TwitchGlypher;
   watermark?: boolean;
@@ -457,13 +459,12 @@ export function renderScheduleToContext(
   ctx: CanvasRenderingContext2D,
   opts: RenderOpts,
 ): void {
-  const { schedule, measure: m, W, H, logoImg, twitchGlyph, watermark = true } = opts;
+  const { schedule, measure: m, W, H, titleH: th, logoImg, twitchGlyph, watermark = true } = opts;
 
   ctx.fillStyle = THEME.bg;
   ctx.fillRect(0, 0, W, H);
 
   const left = LAYOUT.pad;
-  const th = titleHeight(schedule);
 
   if (th > 0) {
     ctx.textBaseline = "alphabetic";
@@ -482,7 +483,7 @@ export function renderScheduleToContext(
     y += section.h + LAYOUT.dayGap;
   });
 
-  if (logoImg && schedule.logo?.src && (logoImg.naturalWidth ?? logoImg.width) > 0) {
+  if (logoImg && schedule.logo && (logoImg.naturalWidth ?? logoImg.width) > 0) {
     const lw = (clamp(schedule.logo.size, 1, 100) / 100) * W;
     const lh =
       lw * ((logoImg.naturalHeight ?? logoImg.height) / (logoImg.naturalWidth ?? logoImg.width));

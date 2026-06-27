@@ -40,6 +40,7 @@ export default function App() {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const logoBlobUrlRef = useRef<string | null>(null);
+  const [shareToken, setShareToken] = useState<string | null>(null);
 
   // Server-synced schedule list + the one currently being edited.
   const [scheduleList, setScheduleList] = useState<ScheduleMeta[]>([]);
@@ -227,13 +228,7 @@ export default function App() {
     if (!currentScheduleId) return;
     try {
       const { token } = await api.createShare(currentScheduleId);
-      const url = `${window.location.origin}/?share=${token}`;
-      try {
-        await navigator.clipboard.writeText(url);
-        alert(`Share link copied to clipboard:\n${url}`);
-      } catch {
-        prompt("Share link:", url);
-      }
+      setShareToken(token);
     } catch (e) {
       alert(e instanceof Error ? e.message : String(e));
     }
@@ -442,6 +437,45 @@ export default function App() {
           />
         </section>
       </main>
+
+      {shareToken && (
+        <ShareModal
+          token={shareToken}
+          onClose={() => setShareToken(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function copyToClipboard(text: string) {
+  navigator.clipboard.writeText(text).catch(() => {});
+}
+
+function ShareModal({ token, onClose }: { token: string; onClose: () => void }) {
+  const pageUrl = `${window.location.origin}/?share=${token}`;
+  const imageUrl = `${window.location.origin}/api/share/${token}/image?scale=2`;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <h2 className="modal-title">Share schedule</h2>
+        <label className="modal-field">
+          <span>Live preview page</span>
+          <span className="modal-row">
+            <input className="modal-input" value={pageUrl} readOnly onFocus={(e) => e.target.select()} />
+            <button className="btn" onClick={() => copyToClipboard(pageUrl)}>Copy</button>
+          </span>
+        </label>
+        <label className="modal-field">
+          <span>Embed image</span>
+          <span className="modal-row">
+            <input className="modal-input" value={imageUrl} readOnly onFocus={(e) => e.target.select()} />
+            <button className="btn" onClick={() => copyToClipboard(imageUrl)}>Copy</button>
+          </span>
+        </label>
+        <button className="btn ghost modal-close" onClick={onClose}>Close</button>
+      </div>
     </div>
   );
 }

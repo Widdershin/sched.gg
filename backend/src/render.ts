@@ -14,19 +14,17 @@ const currentDir = dirname(fileURLToPath(import.meta.url));
 
 // --- Font registration -------------------------------------------------------
 
-// Inter is provided by nixpkgs (pkgs.inter) and copied into shared/ at build
-// time. During local dev it's expected at ../../shared/Inter.ttf.
+// Inter static weight files are copied into shared/ at build time (from ./fonts).
 function tryRegisterFont() {
-  const paths = [
-    join(currentDir, "shared", "Inter.ttf"),
-    join(currentDir, "..", "..", "shared", "Inter.ttf"),
-  ];
-  for (const p of paths) {
-    try {
-      GlobalFonts.registerFromPath(p, "Inter");
-      return;
-    } catch {
-      // try next path
+  for (const weight of ["Regular", "Medium", "Bold", "ExtraBold"]) {
+    for (const baseDir of [currentDir, join(currentDir, ".."), join(currentDir, "..", "..")]) {
+      const p = join(baseDir, "shared", `Inter-${weight}.ttf`);
+      try {
+        GlobalFonts.registerFromPath(p, "Inter");
+        break;
+      } catch {
+        // try next path
+      }
     }
   }
 }
@@ -67,35 +65,6 @@ const twitchGlyph: TwitchGlypher = (ctx, color, size) => {
   return c as unknown as import("../../shared/render.js").CanvasLike;
 };
 
-// --- Image cache -------------------------------------------------------------
-
-interface CacheEntry {
-  buffer: Buffer;
-  updatedAt: number;
-}
-
-const imageCache = new Map<string, CacheEntry>();
-const MAX_CACHE_SIZE = 100;
-
-function evictStale() {
-  const now = Date.now();
-  const oneHour = 60 * 60 * 1000;
-  for (const [id, entry] of imageCache) {
-    if (now - entry.updatedAt > oneHour) {
-      imageCache.delete(id);
-    }
-  }
-  // If still too large, evict oldest
-  if (imageCache.size > MAX_CACHE_SIZE) {
-    const entries = [...imageCache.entries()].sort(
-      (a, b) => a[1].updatedAt - b[1].updatedAt,
-    );
-    for (let i = 0; i < entries.length - MAX_CACHE_SIZE; i++) {
-      imageCache.delete(entries[i][0]);
-    }
-  }
-}
-
 // --- Render entry point ------------------------------------------------------
 
 export interface RenderOptions {
@@ -116,20 +85,17 @@ function resolveRatio(output?: OutputSettings | null): number | null {
 }
 
 export async function renderScheduleToPng(
-  scheduleId: string,
-  updatedAt: number,
   opts: RenderOptions,
 ): Promise<Buffer> {
-  const scale = opts.scale ?? 2;
-  const cacheKey = `${scheduleId}@${updatedAt}@${scale}@${opts.output?.mode ?? "fit"}`;
-  const cached = imageCache.get(cacheKey);
-  if (cached) return cached.buffer;
-
   await ensureTwitchIcon();
+
+  const scale = opts.scale ?? 2;
+  const logoAvailable = !!(opts.logoBytes && opts.logoBytes.length > 0);
+  const hasLogo = !!(opts.schedule.logo && logoAvailable);
 
   // Aspect ratio handling — same logic as frontend render.ts.
   const aspectRatio = resolveRatio(opts.output);
-  const base = measureSchedule(opts.schedule, 1);
+  const base = measureSchedule(opts.schedule, 1, undefined, hasLogo);
   let hScale = 1;
   let forcedWidth: number | undefined;
   if (aspectRatio && aspectRatio > 0) {
@@ -151,7 +117,7 @@ export async function renderScheduleToPng(
   const m =
     hScale === 1 && forcedWidth == null
       ? base
-      : measureSchedule(opts.schedule, hScale, forcedWidth);
+      : measureSchedule(opts.schedule, hScale, forcedWidth, hasLogo);
   const W = m.width;
   const H = m.height;
 
@@ -171,26 +137,15 @@ export async function renderScheduleToPng(
     }
   }
 
-  // Attach a truthy src to the logo so renderScheduleToContext draws it.
-  const schedule = opts.schedule.logo && logoImg
-    ? { ...opts.schedule, logo: { ...opts.schedule.logo, src: "1" } }
-    : opts.schedule;
-
   renderScheduleToContext(ctx, {
-    schedule,
+    schedule: opts.schedule,
     measure: m,
     W,
     H,
+    titleH: hasLogo ? 0 : LAYOUT.titleH,
     logoImg: logoImg as unknown as import("../../shared/render.js").ImageLike,
     twitchGlyph,
-    watermark: false,
   });
 
-  const buffer = canvas.toBuffer("image/png");
-
-  // Cache the result.
-  evictStale();
-  imageCache.set(cacheKey, { buffer, updatedAt: Date.now() });
-
-  return buffer;
+  return canvas.toBuffer("image/png");
 }

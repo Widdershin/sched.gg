@@ -67,7 +67,8 @@ export function renderSchedule(
   aspectRatio: number | null = null,
   logoImg: HTMLImageElement | null = null,
 ): Measure {
-  const base = measureSchedule(schedule, 1);
+  const hasLogo = schedule.logo != null;
+  const base = measureSchedule(schedule, 1, undefined, hasLogo);
   let hScale = 1;
   let forcedWidth: number | undefined;
   if (aspectRatio && aspectRatio > 0) {
@@ -89,7 +90,7 @@ export function renderSchedule(
   const m =
     hScale === 1 && forcedWidth == null
       ? base
-      : measureSchedule(schedule, hScale, forcedWidth);
+      : measureSchedule(schedule, hScale, forcedWidth, hasLogo);
 
   const W = m.width;
   const H = m.height;
@@ -110,6 +111,7 @@ export function renderSchedule(
     measure: m,
     W,
     H,
+    titleH: hasLogo ? 0 : LAYOUT.titleH,
     logoImg,
     twitchGlyph,
   });

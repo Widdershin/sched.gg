@@ -58,7 +58,7 @@ share.get("/share/:token/image", async (c) => {
   const row = db
     .prepare(
       `SELECT t.expires_at, t.revoked,
-              s.id AS schedule_id, s.updated_at, s.data, s.output, s.logo
+              s.id AS schedule_id, s.version, s.data, s.output, s.logo, s.rendered_image
          FROM share_tokens t JOIN schedules s ON s.id = t.schedule_id
         WHERE t.token = ?`,
     )
@@ -67,10 +67,11 @@ share.get("/share/:token/image", async (c) => {
         expires_at: number | null;
         revoked: number;
         schedule_id: string;
-        updated_at: number;
+        version: number;
         data: string;
         output: string | null;
         logo: Buffer | null;
+        rendered_image: Buffer | null;
       }
     | undefined;
   if (
@@ -81,20 +82,41 @@ share.get("/share/:token/image", async (c) => {
     return c.json({ error: "not found" }, 404);
   }
 
+  const qs = Number(c.req.query("scale")) || 2;
+  const scale = Math.min(Math.max(qs, 1), 3);
+  const skipCache = c.req.query("cacheBust") != null;
+
+  // Default scale=2 is the canonical render — return cached BLOB if present.
+  if (!skipCache && scale === 2 && row.rendered_image) {
+    return c.body(new Uint8Array(row.rendered_image), 200, {
+      "Content-Type": "image/png",
+      "Cache-Control": "public, max-age=3600",
+      "ETag": `"v${row.version}"`,
+    });
+  }
+
   const schedule = JSON.parse(row.data) as Schedule;
   const output = row.output ? (JSON.parse(row.output) as OutputSettings) : null;
-  const scale = Number(c.req.query("scale")) || 2;
 
-  const png = await renderScheduleToPng(row.schedule_id, row.updated_at, {
+  const png = await renderScheduleToPng({
     schedule,
     output,
     logoBytes: row.logo ?? undefined,
-    scale: Math.min(Math.max(scale, 1), 3),
+    scale,
   });
+
+  // Store the canonical scale=2 render for future requests.
+  if (!skipCache && scale === 2) {
+    db.prepare("UPDATE schedules SET rendered_image = ? WHERE id = ?").run(
+      png,
+      row.schedule_id,
+    );
+  }
 
   return c.body(new Uint8Array(png), 200, {
     "Content-Type": "image/png",
-    "Cache-Control": "public, max-age=300",
+    "Cache-Control": "public, max-age=3600",
+    "ETag": `"v${row.version}"`,
   });
 });
 

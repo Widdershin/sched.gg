@@ -99,6 +99,9 @@ schedules.put("/schedules/:id", requireCsrf, async (c) => {
     sets.push("output = ?");
     params.push(body.output != null ? JSON.stringify(body.output) : null);
   }
+  if (body.data !== undefined || body.output !== undefined) {
+    sets.push("version = version + 1, rendered_image = NULL");
+  }
   const now = Date.now();
   sets.push("updated_at = ?");
   params.push(now);
@@ -146,7 +149,7 @@ schedules.put("/schedules/:id/logo", requireCsrf, async (c) => {
     return c.json({ error: "invalid body" }, 400);
   }
   const now = Date.now();
-  db.prepare("UPDATE schedules SET logo = ?, updated_at = ? WHERE id = ?").run(
+  db.prepare("UPDATE schedules SET logo = ?, version = version + 1, rendered_image = NULL, updated_at = ? WHERE id = ?").run(
     buf,
     now,
     id,
@@ -163,7 +166,7 @@ schedules.delete("/schedules/:id/logo", requireCsrf, (c) => {
   if (!owned) return c.json({ error: "not found" }, 404);
 
   const now = Date.now();
-  db.prepare("UPDATE schedules SET logo = NULL, updated_at = ? WHERE id = ?").run(
+  db.prepare("UPDATE schedules SET logo = NULL, version = version + 1, rendered_image = NULL, updated_at = ? WHERE id = ?").run(
     now,
     id,
   );
@@ -188,27 +191,47 @@ schedules.get("/schedules/:id/image", async (c) => {
   const id = c.req.param("id");
   const row = db
     .prepare(
-      "SELECT updated_at, data, output, logo FROM schedules WHERE id = ? AND user_id = ?",
+      "SELECT version, data, output, logo, rendered_image FROM schedules WHERE id = ? AND user_id = ?",
     )
     .get(id, userId(c)) as
-    | { updated_at: number; data: string; output: string | null; logo: Buffer | null }
+    | { version: number; data: string; output: string | null; logo: Buffer | null; rendered_image: Buffer | null }
     | undefined;
   if (!row) return c.json({ error: "not found" }, 404);
 
+  const qs = Number(c.req.query("scale")) || 2;
+  const scale = Math.min(Math.max(qs, 1), 3);
+
+  // Default scale=2 is canonical — return cached BLOB if present.
+  if (scale === 2 && row.rendered_image) {
+    return c.body(new Uint8Array(row.rendered_image), 200, {
+      "Content-Type": "image/png",
+      "Cache-Control": "public, max-age=3600",
+      "ETag": `"v${row.version}"`,
+    });
+  }
+
   const schedule = JSON.parse(row.data) as Schedule;
   const output = row.output ? (JSON.parse(row.output) as OutputSettings) : null;
-  const scale = Number(c.req.query("scale")) || 2;
 
-  const png = await renderScheduleToPng(id, row.updated_at, {
+  const png = await renderScheduleToPng({
     schedule,
     output,
     logoBytes: row.logo ?? undefined,
-    scale: Math.min(Math.max(scale, 1), 3),
+    scale,
   });
+
+  // Store the canonical scale=2 render for future requests.
+  if (scale === 2) {
+    db.prepare("UPDATE schedules SET rendered_image = ? WHERE id = ?").run(
+      png,
+      id,
+    );
+  }
 
   return c.body(new Uint8Array(png), 200, {
     "Content-Type": "image/png",
-    "Cache-Control": "public, max-age=300",
+    "Cache-Control": "public, max-age=3600",
+    "ETag": `"v${row.version}"`,
   });
 });
 
