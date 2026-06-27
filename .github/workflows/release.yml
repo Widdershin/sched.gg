@@ -15,6 +15,7 @@ concurrency:
 permissions:
   contents: write # create tags / releases
   packages: write # push to GHCR
+  workflows: write # needed if a commit changes workflow files
 
 jobs:
   build-release:
