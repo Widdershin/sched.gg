@@ -5,7 +5,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import { renderSchedule } from "./render";
+import { renderSchedule, onAssetsReady } from "./render";
 import type { OutputSettings, Schedule, UpdateFn } from "./types";
 
 // Aspect modes. "fit" sizes tightly to the content; presets fix the ratio;
@@ -98,6 +98,9 @@ export default function Preview({ schedule, update, output, setOutput }: Props) 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null);
+  // Bumped when async render assets (the Twitch icon) load, to force a redraw.
+  const [assetTick, setAssetTick] = useState(0);
+  useEffect(() => onAssetsReady(() => setAssetTick((n) => n + 1)), []);
 
   const logo = schedule.logo;
 
@@ -132,7 +135,7 @@ export default function Preview({ schedule, update, output, setOutput }: Props) 
       }
     }, RENDER_DEBOUNCE_MS);
     return () => clearTimeout(id);
-  }, [schedule, output, logoImg]);
+  }, [schedule, output, logoImg, assetTick]);
 
   const download = () => {
     const canvas = canvasRef.current;

@@ -32,6 +32,58 @@ const BANNER_COLOR = "#7c8699";
 
 type Ctx = CanvasRenderingContext2D;
 
+// Twitch glyph (from assets/twitch.svg), embedded so it bundles into the build.
+// It's a single-colour silhouette we re-tint per pill.
+const TWITCH_SVG =
+  '<svg fill="#000" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">' +
+  '<path d="M80,32,48,112V416h96v64h64l64-64h80L464,304V32ZM416,288l-64,64H256l-64,64V352H112V80H416Z"/>' +
+  '<rect x="320" y="143" width="48" height="129"/>' +
+  '<rect x="208" y="143" width="48" height="129"/></svg>';
+
+let twitchIcon: HTMLImageElement | null = null;
+let twitchReady = false;
+const readyListeners = new Set<() => void>();
+
+// Subscribe to be notified when async render assets (the Twitch icon) finish
+// loading, so the canvas can be redrawn with them. Returns an unsubscribe fn.
+export function onAssetsReady(cb: () => void): () => void {
+  readyListeners.add(cb);
+  return () => readyListeners.delete(cb);
+}
+
+if (typeof Image !== "undefined") {
+  const img = new Image();
+  img.onload = () => {
+    twitchIcon = img;
+    twitchReady = true;
+    readyListeners.forEach((cb) => cb());
+  };
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(TWITCH_SVG)}`;
+}
+
+// Return the Twitch glyph tinted to `color`, rendered at the device resolution
+// so it stays crisp at export scale. Cached per colour+size.
+const iconCache = new Map<string, HTMLCanvasElement>();
+function twitchGlyph(ctx: Ctx, color: string, size: number): HTMLCanvasElement | null {
+  if (!twitchReady || !twitchIcon) return null;
+  const dpr = ctx.getTransform().a || 1;
+  const px = Math.max(1, Math.round(size * dpr));
+  const key = `${color}@${px}`;
+  const cached = iconCache.get(key);
+  if (cached) return cached;
+  const c = document.createElement("canvas");
+  c.width = px;
+  c.height = px;
+  const ic = c.getContext("2d");
+  if (!ic) return null;
+  ic.drawImage(twitchIcon, 0, 0, px, px);
+  ic.globalCompositeOperation = "source-in";
+  ic.fillStyle = color;
+  ic.fillRect(0, 0, px, px);
+  iconCache.set(key, c);
+  return c;
+}
+
 interface Section {
   w: number;
   h: number;
@@ -206,33 +258,44 @@ function drawBlock(
   }
   ctx.textAlign = "left"; // restore for the badges below
 
-  // Stream label badges (bottom). Primary is a solid pill, secondary outlined.
+  // Stream label badges (bottom), each prefixed with a Twitch icon. Primary is
+  // a solid pill, secondary outlined.
   const streams = [block.stream, block.stream2].filter(Boolean);
   if (streams.length) {
     ctx.font = `600 12px ${THEME.font}`;
     const badgeH = 22;
+    const icon = 14;
+    const padL = 8;
+    const gap = 4;
+    const padR = 8;
+    const reserved = padL + icon + gap + padR;
     const lby = y + h - badgeH - 8;
     const rightEdge = x + w - 8;
     let lbx = x + 12;
     if (lby > textY + 4) {
       streams.forEach((text, idx) => {
-        const avail = rightEdge - lbx - 18;
-        if (avail < 16) return; // no room left for another pill
+        const avail = rightEdge - lbx - reserved;
+        if (avail < 12) return; // no room left for another pill
         const label = ellipsize(ctx, text, avail);
-        const badgeW = ctx.measureText(label).width + 18;
+        const labelW = ctx.measureText(label).width;
+        const badgeW = padL + icon + gap + labelW + padR;
+        const fg = idx === 0 ? "#0e1220" : accent;
         if (idx === 0) {
           ctx.fillStyle = accent;
           roundRect(ctx, lbx, lby, badgeW, badgeH, 11);
           ctx.fill();
-          ctx.fillStyle = "#0e1220";
         } else {
           roundRect(ctx, lbx, lby, badgeW, badgeH, 11);
           ctx.strokeStyle = accent;
           ctx.lineWidth = 1.5;
           ctx.stroke();
-          ctx.fillStyle = accent;
         }
-        ctx.fillText(label, lbx + 9, lby + 15);
+        const glyph = twitchGlyph(ctx, fg, icon);
+        if (glyph) {
+          ctx.drawImage(glyph, lbx + padL, lby + (badgeH - icon) / 2, icon, icon);
+        }
+        ctx.fillStyle = fg;
+        ctx.fillText(label, lbx + padL + icon + gap, lby + 15);
         lbx += badgeW + 6;
       });
     }

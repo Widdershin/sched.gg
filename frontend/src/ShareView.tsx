@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { renderSchedule } from "./render";
+import { renderSchedule, onAssetsReady } from "./render";
 import { api } from "./api";
 import type { OutputSettings, SharedSchedule } from "./types";
 
@@ -24,6 +24,8 @@ export default function ShareView({ token }: { token: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [state, setState] = useState<ShareState>({ status: "loading" });
   const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null);
+  const [assetTick, setAssetTick] = useState(0);
+  useEffect(() => onAssetsReady(() => setAssetTick((n) => n + 1)), []);
 
   // Fetch the shared schedule once.
   useEffect(() => {
@@ -63,7 +65,7 @@ export default function ShareView({ token }: { token: string }) {
       resolveRatio(state.output),
       logoImg,
     );
-  }, [state, logoImg]);
+  }, [state, logoImg, assetTick]);
 
   const download = () => {
     const canvas = canvasRef.current;
