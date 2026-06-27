@@ -178,24 +178,24 @@ export function saveSchedule(schedule) {
   }
 }
 
-// --- Output aspect-ratio settings (persisted separately from the schedule) ---
+// --- Output settings: aspect ratio + resolution (persisted separately) ---
 
-const ASPECT_KEY = "sched.gg:aspect:v1";
-const DEFAULT_ASPECT = { mode: "fit", w: 16, h: 9 };
+const OUTPUT_KEY = "sched.gg:output:v1";
+const DEFAULT_OUTPUT = { mode: "fit", w: 16, h: 9, scale: 2 };
 
-export function loadAspectSettings() {
+export function loadOutputSettings() {
   try {
-    const raw = localStorage.getItem(ASPECT_KEY);
-    if (!raw) return { ...DEFAULT_ASPECT };
-    return { ...DEFAULT_ASPECT, ...JSON.parse(raw) };
+    const raw = localStorage.getItem(OUTPUT_KEY);
+    if (!raw) return { ...DEFAULT_OUTPUT };
+    return { ...DEFAULT_OUTPUT, ...JSON.parse(raw) };
   } catch {
-    return { ...DEFAULT_ASPECT };
+    return { ...DEFAULT_OUTPUT };
   }
 }
 
-export function saveAspectSettings(settings) {
+export function saveOutputSettings(settings) {
   try {
-    localStorage.setItem(ASPECT_KEY, JSON.stringify(settings));
+    localStorage.setItem(OUTPUT_KEY, JSON.stringify(settings));
   } catch {
     // Ignore quota / unavailable storage.
   }

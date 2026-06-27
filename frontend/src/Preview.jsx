@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { renderSchedule } from "./render.js";
-import { loadAspectSettings, saveAspectSettings } from "./model.js";
+import { loadOutputSettings, saveOutputSettings } from "./model.js";
 
 // Aspect modes. "fit" sizes tightly to the content; presets fix the ratio;
 // "custom" uses the W:H controls.
@@ -73,19 +73,18 @@ function SliderControl({ label, value, min, max, unit = "", onChange }) {
 export default function Preview({ schedule, update }) {
   const canvasRef = useRef(null);
   const logoInputRef = useRef(null);
-  const [scale, setScale] = useState(2);
-  const [aspect, setAspect] = useState(loadAspectSettings);
+  const [output, setOutput] = useState(loadOutputSettings);
   const [logoImg, setLogoImg] = useState(null);
 
   const logo = schedule.logo;
 
-  // Persist aspect settings (mode + custom W/H) across sessions.
+  // Persist output settings (aspect mode + custom W/H + resolution) across sessions.
   useEffect(() => {
-    saveAspectSettings(aspect);
-  }, [aspect]);
+    saveOutputSettings(output);
+  }, [output]);
 
-  const setAspectField = (key, value) =>
-    setAspect((prev) => ({ ...prev, [key]: value }));
+  const setOutputField = (key, value) =>
+    setOutput((prev) => ({ ...prev, [key]: value }));
 
   // Load the logo data URL into an Image element for the canvas to draw.
   useEffect(() => {
@@ -106,14 +105,14 @@ export default function Preview({ schedule, update }) {
         renderSchedule(
           canvasRef.current,
           schedule,
-          scale,
-          resolveRatio(aspect),
+          output.scale,
+          resolveRatio(output),
           logoImg,
         );
       }
     }, RENDER_DEBOUNCE_MS);
     return () => clearTimeout(id);
-  }, [schedule, scale, aspect, logoImg]);
+  }, [schedule, output, logoImg]);
 
   const download = () => {
     const canvas = canvasRef.current;
@@ -150,63 +149,9 @@ export default function Preview({ schedule, update }) {
 
   const removeLogo = () => update((s) => (s.logo = null));
 
-  const dayCount = schedule.days.length;
-
   return (
     <div className="preview">
       <div className="preview-toolbar">
-        <span className="preview-label">
-          Preview · {dayCount} {dayCount === 1 ? "day" : "days"}
-        </span>
-        <label className="scale-field">
-          Aspect
-          <select
-            value={aspect.mode}
-            onChange={(e) => setAspectField("mode", e.target.value)}
-          >
-            {ASPECTS.map((a) => (
-              <option key={a} value={a}>
-                {a === "fit" ? "Fit content" : a === "custom" ? "Custom" : a}
-              </option>
-            ))}
-          </select>
-        </label>
-        {aspect.mode === "custom" && (
-          <span className="scale-field aspect-custom">
-            <SliderControl
-              label="W"
-              value={aspect.w}
-              min={1}
-              max={32}
-              onChange={(v) => setAspectField("w", v)}
-            />
-            <span className="ratio-colon">:</span>
-            <SliderControl
-              label="H"
-              value={aspect.h}
-              min={1}
-              max={32}
-              onChange={(v) => setAspectField("h", v)}
-            />
-          </span>
-        )}
-        <label className="scale-field">
-          Resolution
-          <select
-            value={scale}
-            onChange={(e) => setScale(Number(e.target.value))}
-          >
-            <option value={1}>1× (standard)</option>
-            <option value={2}>2× (sharp)</option>
-            <option value={3}>3× (print)</option>
-          </select>
-        </label>
-        <button className="btn primary" onClick={download}>
-          Download PNG
-        </button>
-      </div>
-
-      <div className="logo-bar">
         <button
           className="btn ghost"
           onClick={() => logoInputRef.current?.click()}
@@ -254,6 +199,52 @@ export default function Preview({ schedule, update }) {
             e.target.value = "";
           }}
         />
+        <label className="scale-field push-right">
+          Aspect
+          <select
+            value={output.mode}
+            onChange={(e) => setOutputField("mode", e.target.value)}
+          >
+            {ASPECTS.map((a) => (
+              <option key={a} value={a}>
+                {a === "fit" ? "Fit content" : a === "custom" ? "Custom" : a}
+              </option>
+            ))}
+          </select>
+        </label>
+        {output.mode === "custom" && (
+          <span className="scale-field aspect-custom">
+            <SliderControl
+              label="W"
+              value={output.w}
+              min={1}
+              max={32}
+              onChange={(v) => setOutputField("w", v)}
+            />
+            <span className="ratio-colon">:</span>
+            <SliderControl
+              label="H"
+              value={output.h}
+              min={1}
+              max={32}
+              onChange={(v) => setOutputField("h", v)}
+            />
+          </span>
+        )}
+        <label className="scale-field">
+          Resolution
+          <select
+            value={output.scale}
+            onChange={(e) => setOutputField("scale", Number(e.target.value))}
+          >
+            <option value={1}>1× (standard)</option>
+            <option value={2}>2× (sharp)</option>
+            <option value={3}>3× (print)</option>
+          </select>
+        </label>
+        <button className="btn primary" onClick={download}>
+          Download PNG
+        </button>
       </div>
 
       <div className="canvas-scroll">

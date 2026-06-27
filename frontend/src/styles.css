@@ -319,9 +319,8 @@ body {
   border-bottom: 1px solid var(--border);
   background: var(--panel);
 }
-.preview-label {
-  font-weight: 700;
-  flex: 1;
+.push-right {
+  margin-left: auto;
 }
 .scale-field {
   display: flex;
@@ -336,15 +335,6 @@ body {
   border-radius: 8px;
   color: var(--text);
   padding: 6px 8px;
-}
-.logo-bar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel);
 }
 .ctl {
   display: flex;
