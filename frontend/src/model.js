@@ -170,3 +170,26 @@ export function saveSchedule(schedule) {
     // Ignore quota / unavailable storage.
   }
 }
+
+// --- Output aspect-ratio settings (persisted separately from the schedule) ---
+
+const ASPECT_KEY = "sched.gg:aspect:v1";
+const DEFAULT_ASPECT = { mode: "fit", w: 16, h: 9 };
+
+export function loadAspectSettings() {
+  try {
+    const raw = localStorage.getItem(ASPECT_KEY);
+    if (!raw) return { ...DEFAULT_ASPECT };
+    return { ...DEFAULT_ASPECT, ...JSON.parse(raw) };
+  } catch {
+    return { ...DEFAULT_ASPECT };
+  }
+}
+
+export function saveAspectSettings(settings) {
+  try {
+    localStorage.setItem(ASPECT_KEY, JSON.stringify(settings));
+  } catch {
+    // Ignore quota / unavailable storage.
+  }
+}

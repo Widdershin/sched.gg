@@ -1,13 +1,20 @@
 import React, { useEffect, useRef, useState } from "react";
 import { renderSchedule } from "./render.js";
+import { loadAspectSettings, saveAspectSettings } from "./model.js";
 
-// Aspect ratio presets. "fit" sizes tightly to the content; the rest letterbox.
-const ASPECTS = ["fit", "16:9", "4:3", "3:2", "1:1", "4:5", "9:16"];
+// Aspect modes. "fit" sizes tightly to the content; presets fix the ratio;
+// "custom" uses the W:H controls.
+const ASPECTS = ["fit", "16:9", "4:3", "3:2", "1:1", "4:5", "9:16", "custom"];
 
-function parseAspect(value) {
-  if (value === "fit") return null;
-  const [w, h] = value.split(":").map(Number);
-  return w / h;
+// Resolve a mode + custom W/H into a numeric ratio (or null for "fit").
+function resolveRatio({ mode, w, h }) {
+  if (mode === "fit") return null;
+  if (mode === "custom") {
+    const r = Number(w) / Number(h);
+    return Number.isFinite(r) && r > 0 ? r : null;
+  }
+  const [pw, ph] = mode.split(":").map(Number);
+  return pw / ph;
 }
 
 // Read an image file, downscale to keep localStorage small, return a PNG data URL.
@@ -37,10 +44,10 @@ function fileToLogoDataUrl(file, max = 1000) {
 const DEFAULT_LOGO = { size: 18, x: 2, y: 2 };
 
 // A labelled slider paired with a numeric input, both editing the same value.
-function LogoControl({ label, value, min, max, onChange }) {
-  const set = (v) => onChange(Math.min(max, Math.max(min, Number(v) || 0)));
+function SliderControl({ label, value, min, max, unit = "", onChange }) {
+  const set = (v) => onChange(Math.min(max, Math.max(min, Number(v) || min)));
   return (
-    <span className="logo-slider">
+    <span className="ctl">
       {label}
       <input
         type="range"
@@ -50,14 +57,14 @@ function LogoControl({ label, value, min, max, onChange }) {
         onChange={(e) => onChange(Number(e.target.value))}
       />
       <input
-        className="logo-num"
+        className="ctl-num"
         type="number"
         min={min}
         max={max}
         value={value}
         onChange={(e) => set(e.target.value)}
       />
-      <span className="logo-unit">%</span>
+      {unit && <span className="ctl-unit">{unit}</span>}
     </span>
   );
 }
@@ -66,10 +73,18 @@ export default function Preview({ schedule, update }) {
   const canvasRef = useRef(null);
   const logoInputRef = useRef(null);
   const [scale, setScale] = useState(2);
-  const [aspect, setAspect] = useState("fit");
+  const [aspect, setAspect] = useState(loadAspectSettings);
   const [logoImg, setLogoImg] = useState(null);
 
   const logo = schedule.logo;
+
+  // Persist aspect settings (mode + custom W/H) across sessions.
+  useEffect(() => {
+    saveAspectSettings(aspect);
+  }, [aspect]);
+
+  const setAspectField = (key, value) =>
+    setAspect((prev) => ({ ...prev, [key]: value }));
 
   // Load the logo data URL into an Image element for the canvas to draw.
   useEffect(() => {
@@ -88,7 +103,7 @@ export default function Preview({ schedule, update }) {
         canvasRef.current,
         schedule,
         scale,
-        parseAspect(aspect),
+        resolveRatio(aspect),
         logoImg,
       );
     }
@@ -139,14 +154,36 @@ export default function Preview({ schedule, update }) {
         </span>
         <label className="scale-field">
           Aspect
-          <select value={aspect} onChange={(e) => setAspect(e.target.value)}>
+          <select
+            value={aspect.mode}
+            onChange={(e) => setAspectField("mode", e.target.value)}
+          >
             {ASPECTS.map((a) => (
               <option key={a} value={a}>
-                {a === "fit" ? "Fit content" : a}
+                {a === "fit" ? "Fit content" : a === "custom" ? "Custom" : a}
               </option>
             ))}
           </select>
         </label>
+        {aspect.mode === "custom" && (
+          <span className="scale-field aspect-custom">
+            <SliderControl
+              label="W"
+              value={aspect.w}
+              min={1}
+              max={32}
+              onChange={(v) => setAspectField("w", v)}
+            />
+            <span className="ratio-colon">:</span>
+            <SliderControl
+              label="H"
+              value={aspect.h}
+              min={1}
+              max={32}
+              onChange={(v) => setAspectField("h", v)}
+            />
+          </span>
+        )}
         <label className="scale-field">
           Resolution
           <select
@@ -172,25 +209,28 @@ export default function Preview({ schedule, update }) {
         </button>
         {logo && (
           <>
-            <LogoControl
+            <SliderControl
               label="Size"
               value={logo.size}
               min={3}
               max={60}
+              unit="%"
               onChange={(v) => setLogoField("size", v)}
             />
-            <LogoControl
+            <SliderControl
               label="X"
               value={logo.x}
               min={0}
               max={100}
+              unit="%"
               onChange={(v) => setLogoField("x", v)}
             />
-            <LogoControl
+            <SliderControl
               label="Y"
               value={logo.y}
               min={0}
               max={100}
+              unit="%"
               onChange={(v) => setLogoField("y", v)}
             />
             <button className="btn ghost danger" onClick={removeLogo}>
