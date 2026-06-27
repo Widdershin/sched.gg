@@ -77,6 +77,17 @@ const MIGRATIONS: Migration[] = [
     sql: `ALTER TABLE schedules ADD COLUMN logo BLOB;`,
     run: migrateExistingLogos,
   },
+  {
+    version: 3,
+    sql: `
+      ALTER TABLE schedules ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+      UPDATE schedules SET version = 1;
+    `,
+  },
+  {
+    version: 4,
+    sql: `ALTER TABLE schedules ADD COLUMN rendered_image BLOB;`,
+  },
 ];
 
 function migrateExistingLogos(db: DatabaseSync): void {

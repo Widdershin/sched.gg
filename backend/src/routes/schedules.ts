@@ -3,6 +3,8 @@ import { db } from "../db.js";
 import { uuid, token } from "../util/ids.js";
 import { type AppEnv, requireAuth } from "../auth/session.js";
 import { requireCsrf } from "../auth/csrf.js";
+import { renderScheduleToPng } from "../render.js";
+import type { Schedule, OutputSettings } from "../../../shared/types.js";
 
 const schedules = new Hono<AppEnv>();
 
@@ -97,6 +99,9 @@ schedules.put("/schedules/:id", requireCsrf, async (c) => {
     sets.push("output = ?");
     params.push(body.output != null ? JSON.stringify(body.output) : null);
   }
+  if (body.data !== undefined || body.output !== undefined) {
+    sets.push("version = version + 1, rendered_image = NULL");
+  }
   const now = Date.now();
   sets.push("updated_at = ?");
   params.push(now);
@@ -144,7 +149,7 @@ schedules.put("/schedules/:id/logo", requireCsrf, async (c) => {
     return c.json({ error: "invalid body" }, 400);
   }
   const now = Date.now();
-  db.prepare("UPDATE schedules SET logo = ?, updated_at = ? WHERE id = ?").run(
+  db.prepare("UPDATE schedules SET logo = ?, version = version + 1, rendered_image = NULL, updated_at = ? WHERE id = ?").run(
     buf,
     now,
     id,
@@ -161,7 +166,7 @@ schedules.delete("/schedules/:id/logo", requireCsrf, (c) => {
   if (!owned) return c.json({ error: "not found" }, 404);
 
   const now = Date.now();
-  db.prepare("UPDATE schedules SET logo = NULL, updated_at = ? WHERE id = ?").run(
+  db.prepare("UPDATE schedules SET logo = NULL, version = version + 1, rendered_image = NULL, updated_at = ? WHERE id = ?").run(
     now,
     id,
   );
@@ -179,6 +184,49 @@ schedules.get("/schedules/:id/logo", (c) => {
     return c.body(null, 204);
   }
   return c.body(new Uint8Array(row.logo), 200, { "Content-Type": "image/png" });
+});
+
+// Render the schedule to a PNG image (auth required).
+schedules.get("/schedules/:id/image", async (c) => {
+  const id = c.req.param("id");
+  const row = db
+    .prepare(
+      "SELECT version, data, output, logo, rendered_image FROM schedules WHERE id = ? AND user_id = ?",
+    )
+    .get(id, userId(c)) as
+    | { version: number; data: string; output: string | null; logo: Buffer | null; rendered_image: Buffer | null }
+    | undefined;
+  if (!row) return c.json({ error: "not found" }, 404);
+
+  // Return cached BLOB if present.
+  if (row.rendered_image) {
+    return c.body(new Uint8Array(row.rendered_image), 200, {
+      "Content-Type": "image/png",
+      "Cache-Control": "public, max-age=3600",
+      "ETag": `"v${row.version}"`,
+    });
+  }
+
+  const schedule = JSON.parse(row.data) as Schedule;
+  const output = row.output ? (JSON.parse(row.output) as OutputSettings) : null;
+
+  const png = await renderScheduleToPng({
+    schedule,
+    output,
+    logoBytes: row.logo ?? undefined,
+  });
+
+  // Store the rendered image for future requests.
+  db.prepare("UPDATE schedules SET rendered_image = ? WHERE id = ?").run(
+      png,
+      id,
+    );
+
+  return c.body(new Uint8Array(png), 200, {
+    "Content-Type": "image/png",
+    "Cache-Control": "public, max-age=3600",
+    "ETag": `"v${row.version}"`,
+  });
 });
 
 export default schedules;

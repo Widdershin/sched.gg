@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { db } from "../db.js";
 import type { AppEnv } from "../auth/session.js";
+import { renderScheduleToPng } from "../render.js";
+import type { Schedule, OutputSettings } from "../../../shared/types.js";
 
 const share = new Hono<AppEnv>();
 
@@ -49,6 +51,70 @@ share.get("/share/:token/logo", (c) => {
     return c.body(null, 204);
   }
   return c.body(new Uint8Array(row.logo), 200, { "Content-Type": "image/png" });
+});
+
+// Public: render the shared schedule as a PNG image. No auth required.
+share.get("/share/:token/image", async (c) => {
+  const row = db
+    .prepare(
+      `SELECT t.expires_at, t.revoked,
+              s.id AS schedule_id, s.version, s.data, s.output, s.logo, s.rendered_image
+         FROM share_tokens t JOIN schedules s ON s.id = t.schedule_id
+        WHERE t.token = ?`,
+    )
+    .get(c.req.param("token")) as
+    | {
+        expires_at: number | null;
+        revoked: number;
+        schedule_id: string;
+        version: number;
+        data: string;
+        output: string | null;
+        logo: Buffer | null;
+        rendered_image: Buffer | null;
+      }
+    | undefined;
+  if (
+    !row ||
+    row.revoked ||
+    (row.expires_at != null && row.expires_at < Date.now())
+  ) {
+    return c.json({ error: "not found" }, 404);
+  }
+
+  const skipCache = c.req.query("cacheBust") != null;
+
+  // Return cached BLOB if present and not busting.
+  if (!skipCache && row.rendered_image) {
+    return c.body(new Uint8Array(row.rendered_image), 200, {
+      "Content-Type": "image/png",
+      "Cache-Control": "public, max-age=3600",
+      "ETag": `"v${row.version}"`,
+    });
+  }
+
+  const schedule = JSON.parse(row.data) as Schedule;
+  const output = row.output ? (JSON.parse(row.output) as OutputSettings) : null;
+
+  const png = await renderScheduleToPng({
+    schedule,
+    output,
+    logoBytes: row.logo ?? undefined,
+  });
+
+  // Store the rendered image for future requests.
+  if (!skipCache) {
+    db.prepare("UPDATE schedules SET rendered_image = ? WHERE id = ?").run(
+      png,
+      row.schedule_id,
+    );
+  }
+
+  return c.body(new Uint8Array(png), 200, {
+    "Content-Type": "image/png",
+    "Cache-Control": "public, max-age=3600",
+    "ETag": `"v${row.version}"`,
+  });
 });
 
 export default share;
