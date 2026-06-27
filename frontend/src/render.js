@@ -99,10 +99,15 @@ export function measureSchedule(schedule, hScale = 1) {
   const width = LAYOUT.pad * 2 + (sections.length ? contentW : 400);
   const height =
     LAYOUT.pad * 2 +
-    LAYOUT.titleH +
+    titleHeight(schedule) +
     stacked +
     Math.max(sections.length - 1, 0) * LAYOUT.dayGap;
   return { width, height, sections };
+}
+
+// The title (and its reserved whitespace) is hidden when a logo is present.
+function titleHeight(schedule) {
+  return schedule.logo?.src ? 0 : LAYOUT.titleH;
 }
 
 // Draw one day section with its top-left at (x, y). Time range is per-day.
@@ -282,17 +287,20 @@ export function renderSchedule(
   ctx.fillRect(0, 0, W, H);
 
   const left = LAYOUT.pad;
+  const titleH = titleHeight(schedule);
 
-  // Shared tournament title.
-  ctx.textBaseline = "alphabetic";
-  ctx.textAlign = "left";
-  ctx.fillStyle = THEME.title;
-  ctx.font = `800 40px ${THEME.font}`;
-  ctx.fillText(schedule.title || "Tournament", left, LAYOUT.pad + 40);
+  // Shared tournament title (hidden when a logo replaces it).
+  if (titleH > 0) {
+    ctx.textBaseline = "alphabetic";
+    ctx.textAlign = "left";
+    ctx.fillStyle = THEME.title;
+    ctx.font = `800 40px ${THEME.font}`;
+    ctx.fillText(schedule.title || "Tournament", left, LAYOUT.pad + 40);
+  }
 
   // Day sections, stacked. Right-aligned days hug the right content edge.
   const contentRight = W - LAYOUT.pad;
-  let y = LAYOUT.pad + LAYOUT.titleH;
+  let y = LAYOUT.pad + titleH;
   schedule.days.forEach((day, i) => {
     const section = m.sections[i];
     const x = day.align === "right" ? contentRight - section.w : left;
