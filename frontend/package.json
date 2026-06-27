@@ -1,0 +1,18 @@
+{
+  "name": "sched-gg-frontend",
+  "version": "1.0.0",
+  "description": "Schedule image builder for fighting game / Smash tournaments",
+  "private": true,
+  "scripts": {
+    "build": "esbuild src/index.jsx --bundle --minify --loader:.js=jsx --outfile=bundle.js",
+    "dev": "esbuild src/index.jsx --bundle --loader:.js=jsx --servedir=. --outfile=bundle.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
