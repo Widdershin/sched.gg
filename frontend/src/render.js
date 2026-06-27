@@ -26,6 +26,9 @@ const LAYOUT = {
   blockRadius: 10,
 };
 
+// Neutral grey used for banner blocks (spanning all lanes, e.g. "Doors open").
+const BANNER_COLOR = "#7c8699";
+
 // Rounded rectangle path helper.
 function roundRect(ctx, x, y, w, h, r) {
   const radius = Math.min(r, h / 2, w / 2);
@@ -110,16 +113,106 @@ function titleHeight(schedule) {
   return schedule.logo?.src ? 0 : LAYOUT.titleH;
 }
 
+// Draw a single time block (lane or banner) at (x, y) with the given accent.
+function drawBlock(ctx, block, x, y, w, h, accent, opts = {}) {
+  // Body.
+  ctx.fillStyle = hexToRgba(accent, 0.2);
+  roundRect(ctx, x, y, w, h, LAYOUT.blockRadius);
+  ctx.fill();
+  ctx.strokeStyle = hexToRgba(accent, 0.85);
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, x, y, w, h, LAYOUT.blockRadius);
+  ctx.stroke();
+
+  const innerX = x + 14;
+  const innerW = w - 22;
+  if (innerW < 24) return; // too narrow for any text
+
+  const lineH = 19;
+  ctx.font = `700 16px ${THEME.font}`;
+  const nLines = wrapText(ctx, block.name || "", innerW, 2);
+  const start = parseTime(block.start);
+  const end = parseTime(block.end);
+  const hasTime = start != null && end != null;
+
+  // Banners (opts.center) centre their name+time group both vertically and
+  // horizontally; regular blocks anchor it to the top-left.
+  const groupH = nLines.length * lineH + (hasTime ? 16 : 0);
+  let textY = opts.center ? y + (h - groupH) / 2 + 15 : y + 22;
+  const textX = opts.center ? x + w / 2 : innerX;
+  ctx.textAlign = opts.center ? "center" : "left";
+
+  // Name (wrapped).
+  ctx.fillStyle = THEME.text;
+  for (const line of nLines) {
+    ctx.fillText(line, textX, textY);
+    textY += lineH;
+  }
+
+  // Time range.
+  if (hasTime) {
+    ctx.fillStyle = THEME.muted;
+    ctx.font = `500 13px ${THEME.font}`;
+    ctx.fillText(
+      ellipsize(
+        ctx,
+        `${formatTime(start, { compact: true })}–${formatTime(end, {
+          compact: true,
+        })}`,
+        innerW,
+      ),
+      textX,
+      textY,
+    );
+  }
+  ctx.textAlign = "left"; // restore for the badges below
+
+  // Stream label badges (bottom). Primary is a solid pill, secondary outlined.
+  const streams = [block.stream, block.stream2].filter(Boolean);
+  if (streams.length) {
+    ctx.font = `600 12px ${THEME.font}`;
+    const badgeH = 22;
+    const lby = y + h - badgeH - 8;
+    const rightEdge = x + w - 8;
+    let lbx = x + 12;
+    if (lby > textY + 4) {
+      streams.forEach((text, idx) => {
+        const avail = rightEdge - lbx - 18;
+        if (avail < 16) return; // no room left for another pill
+        const label = ellipsize(ctx, text, avail);
+        const badgeW = ctx.measureText(label).width + 18;
+        if (idx === 0) {
+          ctx.fillStyle = accent;
+          roundRect(ctx, lbx, lby, badgeW, badgeH, 11);
+          ctx.fill();
+          ctx.fillStyle = "#0e1220";
+        } else {
+          roundRect(ctx, lbx, lby, badgeW, badgeH, 11);
+          ctx.strokeStyle = accent;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.fillStyle = accent;
+        }
+        ctx.fillText(label, lbx + 9, lby + 15);
+        lbx += badgeW + 6;
+      });
+    }
+  }
+}
+
 // Draw one day section with its top-left at (x, y). Time range is per-day.
 function drawDaySection(ctx, day, x, y, section) {
   const gridLeft = x + LAYOUT.gutterW;
   const headerTop = y + LAYOUT.subtitleH;
   const lanesTop = headerTop + LAYOUT.timeHeaderH;
+  const banners = day.banners ?? [];
   const laneCount = Math.max(day.lanes.length, 1);
   const lanesBottom =
     lanesTop + laneCount * LAYOUT.laneH + (laneCount - 1) * LAYOUT.laneGap;
   const minutesToX = (mins) =>
     gridLeft + (mins - section.min) * section.pxPerMin;
+  const blockW = (start, end) =>
+    Math.max((end - start) * section.pxPerMin, 30);
 
   // Day name.
   ctx.fillStyle = THEME.text;
@@ -144,99 +237,51 @@ function drawDaySection(ctx, day, x, y, section) {
   }
   ctx.textAlign = "left";
 
-  // Lanes (rows).
+  const INSET = 6; // gap between a block and its row edge
+
+  // Lane rows.
   day.lanes.forEach((lane, i) => {
     const laneY = lanesTop + i * (LAYOUT.laneH + LAYOUT.laneGap);
     const accent = lane.color || "#3c8ce2";
 
-    // Row background spanning the time track.
+    // Faint row background spanning the time track.
     ctx.fillStyle = hexToRgba("#ffffff", 0.02);
     roundRect(ctx, gridLeft, laneY, section.trackW, LAYOUT.laneH, 8);
     ctx.fill();
 
-    // Blocks.
     for (const block of lane.blocks) {
       const start = parseTime(block.start);
       const end = parseTime(block.end);
       if (start == null || end == null || end <= start) continue;
-
-      const bx = minutesToX(start);
-      const w = Math.max((end - start) * section.pxPerMin, 30);
-      const by = laneY + 6;
-      const bh = LAYOUT.laneH - 12;
-
-      // Block body.
-      ctx.fillStyle = hexToRgba(accent, 0.2);
-      roundRect(ctx, bx, by, w, bh, LAYOUT.blockRadius);
-      ctx.fill();
-      ctx.strokeStyle = hexToRgba(accent, 0.85);
-      ctx.lineWidth = 1.5;
-      roundRect(ctx, bx, by, w, bh, LAYOUT.blockRadius);
-      ctx.stroke();
-
-      const innerX = bx + 14;
-      const innerW = w - 22;
-      if (innerW < 24) continue; // too narrow for any text
-
-      // Block name (wrapped).
-      ctx.fillStyle = THEME.text;
-      ctx.font = `700 16px ${THEME.font}`;
-      const nLines = wrapText(ctx, block.name || "", innerW, 2);
-      let textY = by + 22;
-      for (const line of nLines) {
-        ctx.fillText(line, innerX, textY);
-        textY += 19;
-      }
-
-      // Time range.
-      ctx.fillStyle = THEME.muted;
-      ctx.font = `500 13px ${THEME.font}`;
-      ctx.fillText(
-        ellipsize(
-          ctx,
-          `${formatTime(start, { compact: true })}–${formatTime(end, {
-            compact: true,
-          })}`,
-          innerW,
-        ),
-        innerX,
-        textY,
+      drawBlock(
+        ctx,
+        block,
+        minutesToX(start),
+        laneY + INSET,
+        blockW(start, end),
+        LAYOUT.laneH - INSET * 2,
+        accent,
       );
-
-      // Stream label badges (bottom of block). Primary is a solid accent pill;
-      // the secondary is an outlined pill so the two read distinctly.
-      const streams = [block.stream, block.stream2].filter(Boolean);
-      if (streams.length) {
-        ctx.font = `600 12px ${THEME.font}`;
-        const badgeH = 22;
-        const lby = by + bh - badgeH - 8;
-        const rightEdge = bx + w - 8;
-        let lbx = bx + 12;
-        if (lby > textY + 4) {
-          streams.forEach((text, idx) => {
-            const avail = rightEdge - lbx - 18;
-            if (avail < 16) return; // no room left for another pill
-            const label = ellipsize(ctx, text, avail);
-            const badgeW = ctx.measureText(label).width + 18;
-            if (idx === 0) {
-              ctx.fillStyle = accent;
-              roundRect(ctx, lbx, lby, badgeW, badgeH, 11);
-              ctx.fill();
-              ctx.fillStyle = "#0e1220";
-            } else {
-              roundRect(ctx, lbx, lby, badgeW, badgeH, 11);
-              ctx.strokeStyle = accent;
-              ctx.lineWidth = 1.5;
-              ctx.stroke();
-              ctx.fillStyle = accent;
-            }
-            ctx.fillText(label, lbx + 9, lby + 15);
-            lbx += badgeW + 6;
-          });
-        }
-      }
     }
   });
+
+  // Banners: grey blocks spanning the full height of all lanes (e.g. "Doors
+  // open"), drawn on top, positioned by time.
+  for (const block of banners) {
+    const start = parseTime(block.start);
+    const end = parseTime(block.end);
+    if (start == null || end == null || end <= start) continue;
+    drawBlock(
+      ctx,
+      block,
+      minutesToX(start),
+      lanesTop + INSET,
+      blockW(start, end),
+      lanesBottom - lanesTop - INSET * 2,
+      BANNER_COLOR,
+      { center: true },
+    );
+  }
 }
 
 // Render the whole schedule (all days stacked) to a canvas.

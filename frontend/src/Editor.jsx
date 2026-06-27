@@ -26,6 +26,16 @@ export default function Editor({ day, update }) {
       d.lanes.push(makeLane(d.lanes.length));
     });
 
+  const addBanner = () =>
+    setDay((d) => {
+      if (!d.banners) d.banners = [];
+      d.banners.push(
+        makeBlock({ name: "Doors open", start: "10:00", end: "11:00" }),
+      );
+    });
+
+  const banners = day.banners ?? [];
+
   return (
     <div className="editor">
       <div className="day-head">
@@ -46,6 +56,36 @@ export default function Editor({ day, update }) {
         </button>
         <button className="btn ghost danger" onClick={removeDay}>
           Delete day
+        </button>
+      </div>
+
+      <div className="banner-section">
+        <span className="section-label">Banners</span>
+        <div className="blocks">
+          {banners.map((block) => (
+            <BlockEditor
+              key={block.id}
+              block={block}
+              setBlock={(mutator) =>
+                update((s) => {
+                  const b = findDay(s, day.id)?.banners?.find(
+                    (x) => x.id === block.id,
+                  );
+                  if (b) mutator(b);
+                })
+              }
+              removeBlock={() =>
+                update((s) => {
+                  const d = findDay(s, day.id);
+                  if (d?.banners)
+                    d.banners = d.banners.filter((b) => b.id !== block.id);
+                })
+              }
+            />
+          ))}
+        </div>
+        <button className="btn block-add small" onClick={addBanner}>
+          + Add banner
         </button>
       </div>
 
@@ -127,9 +167,19 @@ function LaneEditor({ lane, dayId, update }) {
           <BlockEditor
             key={block.id}
             block={block}
-            laneId={lane.id}
-            dayId={dayId}
-            update={update}
+            setBlock={(mutator) =>
+              update((s) => {
+                const l = findDay(s, dayId)?.lanes.find((x) => x.id === lane.id);
+                const b = l?.blocks.find((x) => x.id === block.id);
+                if (b) mutator(b);
+              })
+            }
+            removeBlock={() =>
+              update((s) => {
+                const l = findDay(s, dayId)?.lanes.find((x) => x.id === lane.id);
+                if (l) l.blocks = l.blocks.filter((b) => b.id !== block.id);
+              })
+            }
           />
         ))}
       </div>
@@ -141,22 +191,10 @@ function LaneEditor({ lane, dayId, update }) {
   );
 }
 
-function BlockEditor({ block, laneId, dayId, update }) {
-  const setBlock = (mutator) =>
-    update((s) => {
-      const d = findDay(s, dayId);
-      const l = d?.lanes.find((x) => x.id === laneId);
-      const b = l?.blocks.find((x) => x.id === block.id);
-      if (b) mutator(b);
-    });
-
-  const removeBlock = () =>
-    update((s) => {
-      const d = findDay(s, dayId);
-      const l = d?.lanes.find((x) => x.id === laneId);
-      if (l) l.blocks = l.blocks.filter((b) => b.id !== block.id);
-    });
-
+// `setBlock(mutator)` applies a mutation to this block; `removeBlock()` deletes
+// it. The parent supplies these so the same editor works for lane blocks and
+// the day's full-width banner blocks.
+function BlockEditor({ block, setBlock, removeBlock }) {
   const invalidTime =
     parseTime(block.start) == null ||
     parseTime(block.end) == null ||

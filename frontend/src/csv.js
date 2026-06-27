@@ -28,6 +28,20 @@ function escapeField(value) {
 export function scheduleToCsv(schedule) {
   const rows = [HEADER];
   for (const day of schedule.days) {
+    // Full-width banner blocks use the special lane "Banner".
+    for (const b of day.banners ?? []) {
+      rows.push([
+        schedule.title,
+        day.name,
+        "Banner",
+        "",
+        b.name,
+        b.start,
+        b.end,
+        b.stream || "",
+        b.stream2 || "",
+      ]);
+    }
     day.lanes.forEach((lane, i) => {
       const base = [schedule.title, day.name, i + 1, lane.color];
       if (lane.blocks.length === 0) {
@@ -102,7 +116,7 @@ export function csvToSchedule(text) {
 
   let title = "";
   const dayOrder = [];
-  const dayMap = new Map(); // dayName -> { laneOrder: [], laneMap: Map }
+  const dayMap = new Map(); // dayName -> { laneOrder, laneMap, banners }
 
   for (const r of dataRows) {
     const tournament = (r[0] || "").trim();
@@ -118,10 +132,29 @@ export function csvToSchedule(text) {
     if (!title && tournament) title = tournament;
 
     if (!dayMap.has(dayName)) {
-      dayMap.set(dayName, { laneOrder: [], laneMap: new Map() });
+      dayMap.set(dayName, { laneOrder: [], laneMap: new Map(), banners: [] });
       dayOrder.push(dayName);
     }
     const day = dayMap.get(dayName);
+
+    const hasBlock = [name, start, end, stream, stream2].some(
+      (v) => String(v).trim() !== "",
+    );
+    const block = hasBlock
+      ? {
+          name: name || "Untitled",
+          start: start || "12:00",
+          end: end || "13:00",
+          stream,
+          stream2,
+        }
+      : null;
+
+    // Full-width banner rows live outside the lanes.
+    if (laneKey.toLowerCase() === "banner") {
+      if (block) day.banners.push(block);
+      continue;
+    }
 
     if (!day.laneMap.has(laneKey)) {
       day.laneMap.set(laneKey, { color: "", blocks: [] });
@@ -129,19 +162,7 @@ export function csvToSchedule(text) {
     }
     const lane = day.laneMap.get(laneKey);
     if (color && !lane.color) lane.color = color;
-
-    const hasBlock = [name, start, end, stream, stream2].some(
-      (v) => String(v).trim() !== "",
-    );
-    if (hasBlock) {
-      lane.blocks.push({
-        name: name || "Untitled",
-        start: start || "12:00",
-        end: end || "13:00",
-        stream,
-        stream2,
-      });
-    }
+    if (block) lane.blocks.push(block);
   }
 
   const days = dayOrder.map((dayName, di) => {
@@ -155,6 +176,7 @@ export function csvToSchedule(text) {
     });
     return makeDay(di, {
       name: dayName,
+      banners: day.banners.map((b) => makeBlock(b)),
       lanes: lanes.length ? lanes : [makeLane(0)],
     });
   });

@@ -58,6 +58,7 @@ export function makeDay(index = 0, partial = {}) {
     id: uid("day"),
     name: `Day ${index + 1}`,
     align: "left", // "left" | "right" — horizontal placement in the image
+    banners: [], // full-width blocks spanning all lanes (e.g. "Doors open")
     lanes: [makeLane(0)],
     ...partial,
   };
@@ -65,10 +66,12 @@ export function makeDay(index = 0, partial = {}) {
 
 export function defaultSchedule() {
   const day = makeDay(0, { name: "Saturday" });
+  day.banners = [
+    makeBlock({ name: "Doors open", start: "10:00", end: "11:00" }),
+  ];
   day.lanes = [
     makeLane(0, {
       blocks: [
-        makeBlock({ name: "Doors open", start: "10:00", end: "11:00" }),
         makeBlock({
           name: "Pools — Round 1",
           start: "11:00",
@@ -123,20 +126,24 @@ export function formatTime(minutes, { compact = false } = {}) {
   return `${h12}:${String(m).padStart(2, "0")} ${meridiem}`;
 }
 
-// Compute [min, max] minute range covering every block in a day.
+// Compute [min, max] minute range covering every block in a day (lanes + banners).
 export function dayTimeRange(day) {
   let min = Infinity;
   let max = -Infinity;
-  for (const lane of day.lanes) {
-    for (const block of lane.blocks) {
-      const start = parseTime(block.start);
-      const end = parseTime(block.end);
-      if (start != null) min = Math.min(min, start);
-      if (end != null) max = Math.max(max, end);
-      if (start != null) max = Math.max(max, start);
-      if (end != null) min = Math.min(min, end);
+  const consider = (block) => {
+    const start = parseTime(block.start);
+    const end = parseTime(block.end);
+    if (start != null) {
+      min = Math.min(min, start);
+      max = Math.max(max, start);
     }
-  }
+    if (end != null) {
+      min = Math.min(min, end);
+      max = Math.max(max, end);
+    }
+  };
+  for (const lane of day.lanes) for (const block of lane.blocks) consider(block);
+  for (const block of day.banners ?? []) consider(block);
   if (min === Infinity || max === -Infinity) {
     return { min: 10 * 60, max: 20 * 60 };
   }
