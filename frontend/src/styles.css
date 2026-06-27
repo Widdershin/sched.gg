@@ -86,6 +86,21 @@ body {
   font-weight: 600;
   white-space: nowrap;
 }
+.tab:not(.add) {
+  cursor: grab;
+  /* Let pointer drags reorder tabs instead of scrolling/selecting on touch. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.tab.dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+/* Insertion indicator: the dragged day drops just before this tab. */
+.tab.drag-over {
+  box-shadow: inset 3px 0 0 0 var(--accent);
+}
 .tab.active {
   background: var(--bg);
   color: var(--text);
@@ -198,6 +213,7 @@ body {
 .block-row {
   display: flex;
   align-items: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .field {
@@ -206,11 +222,14 @@ body {
   gap: 3px;
   font-size: 11px;
   color: var(--muted);
+  flex-shrink: 0;
 }
 .field.grow {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
 }
 .field input {
+  width: 100%;
   padding: 6px 8px;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -317,6 +336,7 @@ body {
   border-radius: var(--radius);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
   max-width: 100%;
+  height: auto;
 }
 
 @media (max-width: 900px) {

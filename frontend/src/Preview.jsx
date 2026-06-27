@@ -1,15 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
-import { renderDay } from "./render.js";
+import { renderSchedule } from "./render.js";
 
-export default function Preview({ schedule, day }) {
+export default function Preview({ schedule }) {
   const canvasRef = useRef(null);
   const [scale, setScale] = useState(2);
 
   useEffect(() => {
     if (canvasRef.current) {
-      renderDay(canvasRef.current, schedule, day, scale);
+      renderSchedule(canvasRef.current, schedule, scale);
     }
-  }, [schedule, day, scale]);
+  }, [schedule, scale]);
 
   const download = () => {
     const canvas = canvasRef.current;
@@ -21,16 +21,20 @@ export default function Preview({ schedule, day }) {
       const safe = (s) =>
         (s || "schedule").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
       a.href = url;
-      a.download = `${safe(schedule.title)}-${safe(day.name)}.png`;
+      a.download = `${safe(schedule.title)}-schedule.png`;
       a.click();
       URL.revokeObjectURL(url);
     }, "image/png");
   };
 
+  const dayCount = schedule.days.length;
+
   return (
     <div className="preview">
       <div className="preview-toolbar">
-        <span className="preview-label">Preview · {day.name}</span>
+        <span className="preview-label">
+          Preview · {dayCount} {dayCount === 1 ? "day" : "days"}
+        </span>
         <label className="scale-field">
           Resolution
           <select
