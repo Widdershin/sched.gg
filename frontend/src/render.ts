@@ -433,6 +433,16 @@ export function renderSchedule(
     ctx.drawImage(logoImg, lx, ly, lw, lh);
   }
 
+  // Subtle "Made with sched.gg" watermark, equidistant from the bottom & right.
+  const wmMargin = LAYOUT.pad / 2 - 8;
+  ctx.font = `600 15px ${THEME.font}`;
+  ctx.fillStyle = hexToRgba("#ffffff", 0.22);
+  ctx.textAlign = "right";
+  ctx.textBaseline = "bottom";
+  ctx.fillText("sched.gg", W - wmMargin, H - wmMargin);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+
   return m;
 }
 
