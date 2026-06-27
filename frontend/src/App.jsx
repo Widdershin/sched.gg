@@ -7,6 +7,7 @@ import {
 } from "./model.js";
 import Editor from "./Editor.jsx";
 import Preview from "./Preview.jsx";
+import { scheduleToCsv, csvToSchedule } from "./csv.js";
 
 export default function App() {
   const [schedule, setSchedule] = useState(loadSchedule);
@@ -15,6 +16,7 @@ export default function App() {
   );
   const [dragId, setDragId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
+  const importInputRef = useRef(null);
 
   // Persist on every change.
   useEffect(() => {
@@ -53,6 +55,31 @@ export default function App() {
       const day = makeDay(s.days.length);
       s.days.push(day);
     });
+  };
+
+  const exportCsv = () => {
+    const blob = new Blob([scheduleToCsv(schedule)], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safe = (s) => (s || "schedule").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+    a.href = url;
+    a.download = `${safe(schedule.title)}-schedule.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importCsv = async (file) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const imported = csvToSchedule(text);
+      setSchedule(imported);
+      setActiveDayId(imported.days[0]?.id ?? null);
+    } catch (err) {
+      alert(`Could not import CSV: ${err.message}`);
+    }
   };
 
   // Move the dragged day so it sits just before the drop-target day.
@@ -136,9 +163,28 @@ export default function App() {
           placeholder="Tournament name"
           onChange={(e) => update((s) => (s.title = e.target.value))}
         />
+        <button className="btn ghost" onClick={exportCsv}>
+          Export CSV
+        </button>
+        <button
+          className="btn ghost"
+          onClick={() => importInputRef.current?.click()}
+        >
+          Import CSV
+        </button>
         <button className="btn ghost" onClick={resetAll}>
           Reset
         </button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".csv,text/csv"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            importCsv(e.target.files?.[0]);
+            e.target.value = ""; // allow re-importing the same file
+          }}
+        />
       </header>
 
       <div className="tabs">

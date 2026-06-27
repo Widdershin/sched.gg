@@ -92,12 +92,7 @@ function LaneEditor({ lane, dayId, update }) {
     <div className="lane" style={{ borderColor: lane.color }}>
       <div className="lane-head">
         <span className="swatch" style={{ background: lane.color }} />
-        <input
-          className="lane-name"
-          value={lane.name}
-          placeholder="Lane name (e.g. Main Stage)"
-          onChange={(e) => setLane((l) => (l.name = e.target.value))}
-        />
+        <span className="lane-label">Lane</span>
         <select
           className="color-select"
           value={lane.color}

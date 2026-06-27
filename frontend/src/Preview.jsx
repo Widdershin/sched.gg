@@ -1,15 +1,25 @@
 import React, { useEffect, useRef, useState } from "react";
 import { renderSchedule } from "./render.js";
 
+// Aspect ratio presets. "fit" sizes tightly to the content; the rest letterbox.
+const ASPECTS = ["fit", "16:9", "4:3", "3:2", "1:1", "4:5", "9:16"];
+
+function parseAspect(value) {
+  if (value === "fit") return null;
+  const [w, h] = value.split(":").map(Number);
+  return w / h;
+}
+
 export default function Preview({ schedule }) {
   const canvasRef = useRef(null);
   const [scale, setScale] = useState(2);
+  const [aspect, setAspect] = useState("fit");
 
   useEffect(() => {
     if (canvasRef.current) {
-      renderSchedule(canvasRef.current, schedule, scale);
+      renderSchedule(canvasRef.current, schedule, scale, parseAspect(aspect));
     }
-  }, [schedule, scale]);
+  }, [schedule, scale, aspect]);
 
   const download = () => {
     const canvas = canvasRef.current;
@@ -35,6 +45,16 @@ export default function Preview({ schedule }) {
         <span className="preview-label">
           Preview · {dayCount} {dayCount === 1 ? "day" : "days"}
         </span>
+        <label className="scale-field">
+          Aspect
+          <select value={aspect} onChange={(e) => setAspect(e.target.value)}>
+            {ASPECTS.map((a) => (
+              <option key={a} value={a}>
+                {a === "fit" ? "Fit content" : a}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="scale-field">
           Resolution
           <select

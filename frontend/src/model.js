@@ -47,7 +47,6 @@ export function makeBlock(partial = {}) {
 export function makeLane(index = 0, partial = {}) {
   return {
     id: uid("lane"),
-    name: `Lane ${index + 1}`,
     color: LANE_COLORS[index % LANE_COLORS.length],
     blocks: [],
     ...partial,
@@ -67,7 +66,6 @@ export function defaultSchedule() {
   const day = makeDay(0, { name: "Saturday" });
   day.lanes = [
     makeLane(0, {
-      name: "Main Stage",
       blocks: [
         makeBlock({ name: "Doors open", start: "10:00", end: "11:00" }),
         makeBlock({
@@ -85,7 +83,6 @@ export function defaultSchedule() {
       ],
     }),
     makeLane(1, {
-      name: "Side Bracket",
       blocks: [
         makeBlock({ name: "Doubles pools", start: "11:00", end: "14:00" }),
         makeBlock({

@@ -18,7 +18,7 @@ const LAYOUT = {
   titleH: 70, // shared tournament title block at the top
   subtitleH: 38, // per-day name
   timeHeaderH: 36,
-  gutterW: 170, // left column holding lane names
+  gutterW: 18, // slim left column for the lane colour accent
   laneH: 92,
   laneGap: 12,
   dayGap: 40, // vertical space between day sections
@@ -72,25 +72,31 @@ function ellipsize(ctx, text, maxWidth) {
   return `${s}…`;
 }
 
-// Pixel size of a single day section (excludes the shared title).
-function measureDaySection(day) {
+// Pixel size of a single day section (excludes the shared title). `hScale`
+// compresses only the time axis, so blocks change width while text, block
+// heights and corner radii keep their natural proportions.
+function measureDaySection(day, hScale = 1) {
   const { min, max } = dayTimeRange(day);
   const laneCount = Math.max(day.lanes.length, 1);
-  const trackW = (max - min) * LAYOUT.pxPerMin;
+  const pxPerMin = LAYOUT.pxPerMin * hScale;
+  const trackW = (max - min) * pxPerMin;
   const w = LAYOUT.gutterW + trackW;
   const lanesH =
     laneCount * LAYOUT.laneH + (laneCount - 1) * LAYOUT.laneGap;
   const h = LAYOUT.subtitleH + LAYOUT.timeHeaderH + lanesH;
-  return { w, h, min, max, trackW };
+  return { w, h, min, max, trackW, pxPerMin };
 }
 
-// Pixel dimensions for the whole schedule (all days stacked).
-export function measureSchedule(schedule) {
+// Pixel dimensions for the whole schedule (all days stacked). `hScale` only
+// affects horizontal (time) sizing; height is unaffected.
+export function measureSchedule(schedule, hScale = 1) {
   const days = schedule.days.length ? schedule.days : [];
-  const sections = days.map(measureDaySection);
+  const sections = days.map((d) => measureDaySection(d, hScale));
   const contentW = sections.reduce((acc, s) => Math.max(acc, s.w), 0);
   const stacked = sections.reduce((acc, s) => acc + s.h, 0);
-  const width = LAYOUT.pad * 2 + Math.max(contentW, 400);
+  // Only floor the width for an empty schedule; otherwise honour the (possibly
+  // compressed) content width so aspect-ratio fitting can reach narrow targets.
+  const width = LAYOUT.pad * 2 + (sections.length ? contentW : 400);
   const height =
     LAYOUT.pad * 2 +
     LAYOUT.titleH +
@@ -108,7 +114,7 @@ function drawDaySection(ctx, day, x, y, section) {
   const lanesBottom =
     lanesTop + laneCount * LAYOUT.laneH + (laneCount - 1) * LAYOUT.laneGap;
   const minutesToX = (mins) =>
-    gridLeft + (mins - section.min) * LAYOUT.pxPerMin;
+    gridLeft + (mins - section.min) * section.pxPerMin;
 
   // Day name.
   ctx.fillStyle = THEME.text;
@@ -143,21 +149,10 @@ function drawDaySection(ctx, day, x, y, section) {
     roundRect(ctx, gridLeft, laneY, section.trackW, LAYOUT.laneH, 8);
     ctx.fill();
 
-    // Lane label in the left gutter.
-    ctx.fillStyle = THEME.panel;
-    roundRect(ctx, x, laneY, LAYOUT.gutterW - 14, LAYOUT.laneH, 8);
-    ctx.fill();
+    // Lane colour accent in the slim left gutter.
     ctx.fillStyle = accent;
     roundRect(ctx, x, laneY, 6, LAYOUT.laneH, 3);
     ctx.fill();
-    ctx.fillStyle = THEME.text;
-    ctx.font = `700 18px ${THEME.font}`;
-    const nameLines = wrapText(ctx, lane.name || "", LAYOUT.gutterW - 44, 2);
-    let ny = laneY + LAYOUT.laneH / 2 - (nameLines.length - 1) * 11 + 6;
-    for (const line of nameLines) {
-      ctx.fillText(line, x + 18, ny);
-      ny += 22;
-    }
 
     // Blocks.
     for (const block of lane.blocks) {
@@ -166,7 +161,7 @@ function drawDaySection(ctx, day, x, y, section) {
       if (start == null || end == null || end <= start) continue;
 
       const bx = minutesToX(start);
-      const w = Math.max((end - start) * LAYOUT.pxPerMin, 30);
+      const w = Math.max((end - start) * section.pxPerMin, 30);
       const by = laneY + 6;
       const bh = LAYOUT.laneH - 12;
 
@@ -178,10 +173,6 @@ function drawDaySection(ctx, day, x, y, section) {
       ctx.lineWidth = 1.5;
       roundRect(ctx, bx, by, w, bh, LAYOUT.blockRadius);
       ctx.stroke();
-      // Accent bar (left edge).
-      ctx.fillStyle = accent;
-      roundRect(ctx, bx, by, 5, bh, 2.5);
-      ctx.fill();
 
       const innerX = bx + 14;
       const innerW = w - 22;
@@ -243,22 +234,40 @@ function drawDaySection(ctx, day, x, y, section) {
 }
 
 // Render the whole schedule (all days stacked) to a canvas.
-// `scale` controls export resolution.
-export function renderSchedule(canvas, schedule, scale = 2) {
-  const m = measureSchedule(schedule);
+// `scale` controls export resolution. `aspectRatio` (width/height) forces the
+// canvas to that ratio by keeping the content's natural height and compressing
+// (or stretching) the time axis so blocks change width — text, block heights and
+// radii keep their proportions. Pass null to size tightly to the content.
+export function renderSchedule(canvas, schedule, scale = 2, aspectRatio = null) {
   const ctx = canvas.getContext("2d");
 
-  canvas.width = Math.round(m.width * scale);
-  canvas.height = Math.round(m.height * scale);
+  // Natural layout, then solve for the time-axis factor that makes the content
+  // width match the target ratio (height is independent of the factor).
+  const base = measureSchedule(schedule, 1);
+  let hScale = 1;
+  if (aspectRatio && aspectRatio > 0) {
+    const targetW = base.height * aspectRatio;
+    const baseTrackMax = Math.max(...base.sections.map((s) => s.trackW), 1);
+    const targetTrack = targetW - LAYOUT.pad * 2 - LAYOUT.gutterW;
+    hScale = targetTrack / baseTrackMax;
+    if (!Number.isFinite(hScale) || hScale <= 0) hScale = 0.05;
+  }
+
+  const m = hScale === 1 ? base : measureSchedule(schedule, hScale);
+  const W = m.width;
+  const H = m.height;
+
+  canvas.width = Math.round(W * scale);
+  canvas.height = Math.round(H * scale);
   // Display at logical size, but let CSS (max-width:100% + height:auto) scale it
   // down proportionally while preserving the aspect ratio.
-  canvas.style.width = `${m.width}px`;
+  canvas.style.width = `${W}px`;
   canvas.style.height = "auto";
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
 
   // Background.
   ctx.fillStyle = THEME.bg;
-  ctx.fillRect(0, 0, m.width, m.height);
+  ctx.fillRect(0, 0, W, H);
 
   const left = LAYOUT.pad;
 
