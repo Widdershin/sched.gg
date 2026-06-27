@@ -71,7 +71,6 @@ export interface RenderOptions {
   schedule: Schedule;
   output?: OutputSettings | null;
   logoBytes?: Buffer | null;
-  scale?: number;
 }
 
 function resolveRatio(output?: OutputSettings | null): number | null {
@@ -89,7 +88,7 @@ export async function renderScheduleToPng(
 ): Promise<Buffer> {
   await ensureTwitchIcon();
 
-  const scale = opts.scale ?? 2;
+  const scale = 2;
   const logoAvailable = !!(opts.logoBytes && opts.logoBytes.length > 0);
   const hasLogo = !!(opts.schedule.logo && logoAvailable);
 

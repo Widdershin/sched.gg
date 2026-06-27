@@ -454,7 +454,7 @@ function copyToClipboard(text: string) {
 
 function ShareModal({ token, onClose }: { token: string; onClose: () => void }) {
   const pageUrl = `${window.location.origin}/?share=${token}`;
-  const imageUrl = `${window.location.origin}/api/share/${token}/image?scale=2`;
+  const imageUrl = `${window.location.origin}/api/share/${token}/image`;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -465,6 +465,7 @@ function ShareModal({ token, onClose }: { token: string; onClose: () => void }) 
           <span className="modal-row">
             <input className="modal-input" value={pageUrl} readOnly onFocus={(e) => e.target.select()} />
             <button className="btn" onClick={() => copyToClipboard(pageUrl)}>Copy</button>
+            <button className="btn" onClick={() => window.open(pageUrl, "_blank")}>View</button>
           </span>
         </label>
         <label className="modal-field">
@@ -472,6 +473,7 @@ function ShareModal({ token, onClose }: { token: string; onClose: () => void }) 
           <span className="modal-row">
             <input className="modal-input" value={imageUrl} readOnly onFocus={(e) => e.target.select()} />
             <button className="btn" onClick={() => copyToClipboard(imageUrl)}>Copy</button>
+            <button className="btn" onClick={() => window.open(imageUrl, "_blank")}>View</button>
           </span>
         </label>
         <button className="btn ghost modal-close" onClick={onClose}>Close</button>

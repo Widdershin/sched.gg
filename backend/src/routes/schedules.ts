@@ -198,11 +198,8 @@ schedules.get("/schedules/:id/image", async (c) => {
     | undefined;
   if (!row) return c.json({ error: "not found" }, 404);
 
-  const qs = Number(c.req.query("scale")) || 2;
-  const scale = Math.min(Math.max(qs, 1), 3);
-
-  // Default scale=2 is canonical — return cached BLOB if present.
-  if (scale === 2 && row.rendered_image) {
+  // Return cached BLOB if present.
+  if (row.rendered_image) {
     return c.body(new Uint8Array(row.rendered_image), 200, {
       "Content-Type": "image/png",
       "Cache-Control": "public, max-age=3600",
@@ -217,16 +214,13 @@ schedules.get("/schedules/:id/image", async (c) => {
     schedule,
     output,
     logoBytes: row.logo ?? undefined,
-    scale,
   });
 
-  // Store the canonical scale=2 render for future requests.
-  if (scale === 2) {
-    db.prepare("UPDATE schedules SET rendered_image = ? WHERE id = ?").run(
+  // Store the rendered image for future requests.
+  db.prepare("UPDATE schedules SET rendered_image = ? WHERE id = ?").run(
       png,
       id,
     );
-  }
 
   return c.body(new Uint8Array(png), 200, {
     "Content-Type": "image/png",

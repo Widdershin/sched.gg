@@ -82,12 +82,10 @@ share.get("/share/:token/image", async (c) => {
     return c.json({ error: "not found" }, 404);
   }
 
-  const qs = Number(c.req.query("scale")) || 2;
-  const scale = Math.min(Math.max(qs, 1), 3);
   const skipCache = c.req.query("cacheBust") != null;
 
-  // Default scale=2 is the canonical render — return cached BLOB if present.
-  if (!skipCache && scale === 2 && row.rendered_image) {
+  // Return cached BLOB if present and not busting.
+  if (!skipCache && row.rendered_image) {
     return c.body(new Uint8Array(row.rendered_image), 200, {
       "Content-Type": "image/png",
       "Cache-Control": "public, max-age=3600",
@@ -102,11 +100,10 @@ share.get("/share/:token/image", async (c) => {
     schedule,
     output,
     logoBytes: row.logo ?? undefined,
-    scale,
   });
 
-  // Store the canonical scale=2 render for future requests.
-  if (!skipCache && scale === 2) {
+  // Store the rendered image for future requests.
+  if (!skipCache) {
     db.prepare("UPDATE schedules SET rendered_image = ? WHERE id = ?").run(
       png,
       row.schedule_id,
