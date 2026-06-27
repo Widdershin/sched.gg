@@ -39,6 +39,8 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v16
 
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
       # Pull prebuilt fantail/deps from the fantail Cachix cache to speed builds
       # (pull-only — no auth token, we never push).
       - name: Use the fantail Cachix cache
