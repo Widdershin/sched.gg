@@ -231,42 +231,27 @@ function drawDaySection(ctx, day, x, y, section) {
     ctx.lineTo(gx, lanesBottom);
     ctx.stroke();
 
-    ctx.fillStyle = THEME.muted;
-    ctx.textAlign = "center";
-    ctx.fillText(formatTime(t, { compact: true }), gx, headerTop + 14);
+    // Left-align the label to its gridline, and omit the final (right-edge) one.
+    if (t < section.max) {
+      ctx.fillStyle = THEME.muted;
+      ctx.textAlign = "left";
+      ctx.fillText(formatTime(t, { compact: true }), gx + 5, headerTop + 14);
+    }
   }
   ctx.textAlign = "left";
 
   const INSET = 6; // gap between a block and its row edge
 
-  // Lane rows.
-  day.lanes.forEach((lane, i) => {
+  // Lane row backgrounds (faint), behind everything.
+  day.lanes.forEach((_, i) => {
     const laneY = lanesTop + i * (LAYOUT.laneH + LAYOUT.laneGap);
-    const accent = lane.color || "#3c8ce2";
-
-    // Faint row background spanning the time track.
     ctx.fillStyle = hexToRgba("#ffffff", 0.02);
     roundRect(ctx, gridLeft, laneY, section.trackW, LAYOUT.laneH, 8);
     ctx.fill();
-
-    for (const block of lane.blocks) {
-      const start = parseTime(block.start);
-      const end = parseTime(block.end);
-      if (start == null || end == null || end <= start) continue;
-      drawBlock(
-        ctx,
-        block,
-        minutesToX(start),
-        laneY + INSET,
-        blockW(start, end),
-        LAYOUT.laneH - INSET * 2,
-        accent,
-      );
-    }
   });
 
-  // Banners: grey blocks spanning the full height of all lanes (e.g. "Doors
-  // open"), drawn on top, positioned by time.
+  // Banners first: grey blocks spanning the full height of all lanes (e.g.
+  // "Doors open"), positioned by time — so lane blocks always sit on top.
   for (const block of banners) {
     const start = parseTime(block.start);
     const end = parseTime(block.end);
@@ -282,6 +267,26 @@ function drawDaySection(ctx, day, x, y, section) {
       { center: true },
     );
   }
+
+  // Lane blocks, drawn on top of the banners.
+  day.lanes.forEach((lane, i) => {
+    const laneY = lanesTop + i * (LAYOUT.laneH + LAYOUT.laneGap);
+    const accent = lane.color || "#3c8ce2";
+    for (const block of lane.blocks) {
+      const start = parseTime(block.start);
+      const end = parseTime(block.end);
+      if (start == null || end == null || end <= start) continue;
+      drawBlock(
+        ctx,
+        block,
+        minutesToX(start),
+        laneY + INSET,
+        blockW(start, end),
+        LAYOUT.laneH - INSET * 2,
+        accent,
+      );
+    }
+  });
 }
 
 // Render the whole schedule (all days stacked) to a canvas.
