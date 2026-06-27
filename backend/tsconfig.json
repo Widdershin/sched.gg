@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src", "build.mjs"]
+  "include": ["src", "build.mjs", "../shared"]
 }

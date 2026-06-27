@@ -1,39 +1,17 @@
-import { dayTimeRange, parseTime, formatTime } from "./model";
-import type { Block, Day, Schedule } from "./types";
+import {
+  THEME,
+  LAYOUT,
+  measureSchedule,
+  renderScheduleToContext,
+} from "../../shared/render.js";
+import type { Schedule } from "../../shared/types.js";
+import type { Measure, TwitchGlypher } from "../../shared/render.js";
 
-// Visual theme for the rendered schedule image.
-const THEME = {
-  bg: "#0e1220",
-  panel: "#161c2e",
-  grid: "#252c42",
-  text: "#f5f7fb",
-  muted: "#8c95ad",
-  title: "#ffffff",
-  font: "'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif",
-};
+export { measureSchedule };
+export type { Measure };
 
-// Horizontal layout: time runs left→right, lanes are stacked rows. Days are
-// stacked vertically into a single image, sharing one title at the top.
-const LAYOUT = {
-  pad: 48,
-  titleH: 70, // shared tournament title block at the top
-  subtitleH: 38, // per-day name
-  timeHeaderH: 36,
-  gutterW: 0, // no left gutter (lanes are distinguished by block colour)
-  laneH: 92,
-  laneGap: 12,
-  dayGap: 40, // vertical space between day sections
-  pxPerMin: 3.2, // horizontal scale
-  blockRadius: 10,
-};
+// --- Twitch icon (browser-specific) ------------------------------------------
 
-// Neutral grey used for banner blocks (spanning all lanes, e.g. "Doors open").
-const BANNER_COLOR = "#7c8699";
-
-type Ctx = CanvasRenderingContext2D;
-
-// Twitch glyph (from assets/twitch.svg), embedded so it bundles into the build.
-// It's a single-colour silhouette we re-tint per pill.
 const TWITCH_SVG =
   '<svg fill="#000" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">' +
   '<path d="M80,32,48,112V416h96v64h64l64-64h80L464,304V32ZM416,288l-64,64H256l-64,64V352H112V80H416Z"/>' +
@@ -44,8 +22,6 @@ let twitchIcon: HTMLImageElement | null = null;
 let twitchReady = false;
 const readyListeners = new Set<() => void>();
 
-// Subscribe to be notified when async render assets (the Twitch icon) finish
-// loading, so the canvas can be redrawn with them. Returns an unsubscribe fn.
 export function onAssetsReady(cb: () => void): () => void {
   readyListeners.add(cb);
   return () => readyListeners.delete(cb);
@@ -61,10 +37,8 @@ if (typeof Image !== "undefined") {
   img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(TWITCH_SVG)}`;
 }
 
-// Return the Twitch glyph tinted to `color`, rendered at the device resolution
-// so it stays crisp at export scale. Cached per colour+size.
 const iconCache = new Map<string, HTMLCanvasElement>();
-function twitchGlyph(ctx: Ctx, color: string, size: number): HTMLCanvasElement | null {
+const twitchGlyph: TwitchGlypher = (ctx, color, size) => {
   if (!twitchReady || !twitchIcon) return null;
   const dpr = ctx.getTransform().a || 1;
   const px = Math.max(1, Math.round(size * dpr));
@@ -82,407 +56,10 @@ function twitchGlyph(ctx: Ctx, color: string, size: number): HTMLCanvasElement |
   ic.fillRect(0, 0, px, px);
   iconCache.set(key, c);
   return c;
-}
+};
 
-interface Section {
-  w: number;
-  h: number;
-  min: number;
-  max: number;
-  trackW: number;
-  pxPerMin: number;
-}
+// --- Render entry point ------------------------------------------------------
 
-interface Measure {
-  width: number;
-  height: number;
-  sections: Section[];
-}
-
-interface BlockOpts {
-  center?: boolean;
-  hideEnd?: boolean;
-}
-
-// Rounded rectangle path helper.
-function roundRect(
-  ctx: Ctx,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-): void {
-  const radius = Math.min(r, h / 2, w / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.arcTo(x + w, y, x + w, y + h, radius);
-  ctx.arcTo(x + w, y + h, x, y + h, radius);
-  ctx.arcTo(x, y + h, x, y, radius);
-  ctx.arcTo(x, y, x + w, y, radius);
-  ctx.closePath();
-}
-
-// Wrap text to a max width, returning an array of lines (capped).
-function wrapText(
-  ctx: Ctx,
-  text: string,
-  maxWidth: number,
-  maxLines: number,
-): string[] {
-  const words = String(text).split(/\s+/);
-  const lines: string[] = [];
-  let current = "";
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (ctx.measureText(candidate).width <= maxWidth || !current) {
-      current = candidate;
-    } else {
-      lines.push(current);
-      current = word;
-    }
-    if (lines.length >= maxLines) break;
-  }
-  if (current && lines.length < maxLines) lines.push(current);
-  if (lines.length === maxLines) {
-    let last = lines[maxLines - 1];
-    while (last && ctx.measureText(`${last}…`).width > maxWidth) {
-      last = last.slice(0, -1);
-    }
-    if (words.join(" ") !== lines.join(" ")) lines[maxLines - 1] = `${last}…`;
-  }
-  return lines;
-}
-
-// Truncate a single line with an ellipsis to fit a width.
-function ellipsize(ctx: Ctx, text: string, maxWidth: number): string {
-  if (ctx.measureText(text).width <= maxWidth) return text;
-  let s = text;
-  while (s && ctx.measureText(`${s}…`).width > maxWidth) s = s.slice(0, -1);
-  return `${s}…`;
-}
-
-// Pixel size of a single day section (excludes the shared title). `hScale`
-// compresses only the time axis, so blocks change width while text, block
-// heights and corner radii keep their natural proportions.
-function measureDaySection(day: Day, hScale = 1): Section {
-  const { min, max } = dayTimeRange(day);
-  const laneCount = Math.max(day.lanes.length, 1);
-  const pxPerMin = LAYOUT.pxPerMin * hScale;
-  const trackW = (max - min) * pxPerMin;
-  const w = LAYOUT.gutterW + trackW;
-  const lanesH = laneCount * LAYOUT.laneH + (laneCount - 1) * LAYOUT.laneGap;
-  const h = LAYOUT.subtitleH + LAYOUT.timeHeaderH + lanesH;
-  return { w, h, min, max, trackW, pxPerMin };
-}
-
-// Pixel dimensions for the whole schedule (all days stacked). `hScale` only
-// affects horizontal (time) sizing for auto days; manual day widths are fixed
-// as a percentage of the canvas content width. Pass `targetWidth` to force the
-// overall canvas to a specific width (used by aspect-ratio fitting when all days
-// are manual).
-export function measureSchedule(
-  schedule: Schedule,
-  hScale = 1,
-  targetWidth?: number,
-): Measure {
-  const days = schedule.days.length ? schedule.days : [];
-
-  // Natural sections at the given hScale (used as-is for auto days).
-  const naturalSections = days.map((d) => measureDaySection(d, hScale));
-
-  // Compute the "auto" content width (max width of all auto days).
-  let autoContentW = 0;
-  for (let i = 0; i < days.length; i++) {
-    const dw = days[i].dayWidth;
-    if (dw === "auto") {
-      autoContentW = Math.max(autoContentW, naturalSections[i].w);
-    }
-  }
-  if (autoContentW === 0) autoContentW = 400;
-
-  // Content width used for manual day percentage calculations.
-  const contentBase = targetWidth != null
-    ? targetWidth - LAYOUT.pad * 2
-    : autoContentW;
-
-  // Build final sections — manual days get their width from the percentage.
-  const sections = days.map((day, i) => {
-    const dw = day.dayWidth;
-    if (dw === "auto") return naturalSections[i];
-
-    const pct = clamp(Number(dw), 5, 100);
-    const targetW = Math.round((contentBase * pct) / 100);
-    const targetTrackW = Math.max(targetW - LAYOUT.gutterW, 30);
-
-    const { min, max } = naturalSections[i];
-    const range = max - min;
-    const pxPerMin = range > 0 ? targetTrackW / range : LAYOUT.pxPerMin * hScale;
-    const laneCount = Math.max(day.lanes.length, 1);
-    const lanesH = laneCount * LAYOUT.laneH + (laneCount - 1) * LAYOUT.laneGap;
-    const h = LAYOUT.subtitleH + LAYOUT.timeHeaderH + lanesH;
-
-    return { w: targetW, h, min, max, trackW: targetTrackW, pxPerMin };
-  });
-
-  const contentW = sections.reduce((acc, s) => Math.max(acc, s.w), 0);
-  const width = targetWidth != null
-    ? targetWidth
-    : LAYOUT.pad * 2 + (sections.length ? contentW : 400);
-  const stacked = sections.reduce((acc, s) => acc + s.h, 0);
-  const height =
-    LAYOUT.pad * 2 +
-    titleHeight(schedule) +
-    stacked +
-    Math.max(sections.length - 1, 0) * LAYOUT.dayGap;
-  return { width, height, sections };
-}
-
-// The title (and its reserved whitespace) is hidden when a logo is present.
-function titleHeight(schedule: Schedule): number {
-  return schedule.logo?.src ? 0 : LAYOUT.titleH;
-}
-
-// Draw a single time block (lane or banner) at (x, y) with the given accent.
-function drawBlock(
-  ctx: Ctx,
-  block: Block,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  accent: string,
-  opts: BlockOpts = {},
-): void {
-  // Body.
-  ctx.fillStyle = hexToRgba(accent, 0.2);
-  roundRect(ctx, x, y, w, h, LAYOUT.blockRadius);
-  ctx.fill();
-  ctx.strokeStyle = hexToRgba(accent, 0.85);
-  ctx.lineWidth = 1.5;
-  roundRect(ctx, x, y, w, h, LAYOUT.blockRadius);
-  ctx.stroke();
-
-  const innerX = x + 14;
-  const innerW = w - 22;
-  if (innerW < 24) return; // too narrow for any text
-
-  const lineH = 19;
-  ctx.font = `700 16px ${THEME.font}`;
-  const nLines = wrapText(ctx, block.name || "", innerW, 2);
-  const start = parseTime(block.start);
-  const end = parseTime(block.end);
-  const hasTime = start != null && end != null;
-
-  // Banners (opts.center) centre their name+time group both vertically and
-  // horizontally; regular blocks anchor it to the top-left.
-  const groupH = nLines.length * lineH + (hasTime ? 16 : 0);
-  let textY = opts.center ? y + (h - groupH) / 2 + 15 : y + 22;
-  const textX = opts.center ? x + w / 2 : innerX;
-  ctx.textAlign = opts.center ? "center" : "left";
-
-  // Name (wrapped).
-  ctx.fillStyle = THEME.text;
-  for (const line of nLines) {
-    ctx.fillText(line, textX, textY);
-    textY += lineH;
-  }
-
-  // Time range.
-  if (hasTime) {
-    ctx.fillStyle = THEME.muted;
-    ctx.font = `500 12px ${THEME.font}`;
-    let timeText = `${formatTime(start, { compact: true })}–${formatTime(end, {
-      compact: true,
-    })}`;
-    if (opts.hideEnd) {
-      timeText = `${formatTime(start, { compact: true })}`;
-    }
-    ctx.fillText(timeText, textX, textY);
-  }
-  ctx.textAlign = "left"; // restore for the badges below
-
-  // Stream label badges (bottom), each prefixed with a Twitch icon. Primary is
-  // a solid pill, secondary outlined.
-  const streams = [block.stream, block.stream2].filter(Boolean);
-  if (streams.length) {
-    ctx.font = `600 12px ${THEME.font}`;
-    const badgeH = 22;
-    const icon = 14;
-    const padL = 8;
-    const gap = 4;
-    const padR = 8;
-    const reserved = padL + icon + gap + padR;
-    const lby = y + h - badgeH - 8;
-    const rightEdge = x + w - 8;
-    let lbx = x + 12;
-    if (lby > textY + 4) {
-      streams.forEach((text, idx) => {
-        const avail = rightEdge - lbx - reserved;
-        if (avail < 12) return; // no room left for another pill
-        const label = ellipsize(ctx, text, avail);
-        const labelW = ctx.measureText(label).width;
-        const badgeW = padL + icon + gap + labelW + padR;
-        const fg = idx === 0 ? "#0e1220" : accent;
-        if (idx === 0) {
-          ctx.fillStyle = accent;
-          roundRect(ctx, lbx, lby, badgeW, badgeH, 11);
-          ctx.fill();
-        } else {
-          roundRect(ctx, lbx, lby, badgeW, badgeH, 11);
-          ctx.strokeStyle = accent;
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-        }
-        const glyph = twitchGlyph(ctx, fg, icon);
-        if (glyph) {
-          ctx.drawImage(glyph, lbx + padL, lby + (badgeH - icon) / 2, icon, icon);
-        }
-        ctx.fillStyle = fg;
-        ctx.fillText(label, lbx + padL + icon + gap, lby + 15);
-        lbx += badgeW + 6;
-      });
-    }
-  }
-}
-
-// Draw one day section with its top-left at (x, y). Time range is per-day.
-function drawDaySection(
-  ctx: Ctx,
-  day: Day,
-  x: number,
-  y: number,
-  section: Section,
-  canvasW: number,
-): void {
-  const gridLeft = x + LAYOUT.gutterW;
-  const headerTop = y + LAYOUT.subtitleH;
-  const lanesTop = headerTop + LAYOUT.timeHeaderH;
-  const banners = day.banners ?? [];
-  const laneCount = Math.max(day.lanes.length, 1);
-  const lanesBottom =
-    lanesTop + laneCount * LAYOUT.laneH + (laneCount - 1) * LAYOUT.laneGap;
-  const minutesToX = (mins: number) =>
-    gridLeft + (mins - section.min) * section.pxPerMin;
-  const blockW = (start: number, end: number) =>
-    Math.max((end - start) * section.pxPerMin, 30);
-
-  // Day name.
-  ctx.fillStyle = THEME.text;
-  ctx.textAlign = "left";
-  ctx.font = `700 24px ${THEME.font}`;
-  ctx.fillText(day.name || "", x, y + 24);
-
-  // Vertical gridlines + time labels along the top: the day-start tick (which
-  // may be a half hour), each whole hour, and the day-end tick. Labels are
-  // left-aligned to their gridline (the first lines up with the day name).
-  ctx.font = `500 14px ${THEME.font}`;
-  const contentRight = canvasW - LAYOUT.pad;
-  const rightEdge = minutesToX(section.max);
-  const ticks: number[] = [section.min];
-  for (let t = Math.ceil((section.min + 1) / 60) * 60; t < section.max; t += 60) {
-    ticks.push(t);
-  }
-  ticks.push(section.max);
-
-  ticks.forEach((t, idx) => {
-    const gx = minutesToX(t);
-    ctx.strokeStyle = THEME.grid;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(gx, headerTop + 20);
-    ctx.lineTo(gx, lanesBottom);
-    ctx.stroke();
-
-    // The start and interior labels always show. The right-edge (final) label
-    // shows only when the day doesn't reach the right content edge — i.e. it
-    // isn't full width — and won't run off the canvas.
-    const isFinal = idx === ticks.length - 1;
-    const label = formatTime(t, { compact: true });
-    const show =
-      !isFinal ||
-      (rightEdge < contentRight - 1 &&
-        gx + ctx.measureText(label).width <= canvasW);
-    if (show) {
-      ctx.fillStyle = THEME.muted;
-      ctx.textAlign = "left";
-      ctx.fillText(label, gx, headerTop + 14);
-    }
-  });
-  ctx.textAlign = "left";
-
-  const INSET = 6; // gap between a block and its row edge
-
-  // Banner placements (full-height columns by time).
-  const bannerDraws = banners
-    .map((block) => {
-      const start = parseTime(block.start);
-      const end = parseTime(block.end);
-      if (start == null || end == null || end <= start) return null;
-      return { block, x: minutesToX(start), w: blockW(start, end) };
-    })
-    .filter((b): b is { block: Block; x: number; w: number } => b !== null);
-
-  // Lane row backgrounds (faint), excluding the columns covered by banners so
-  // the banner sits against the page background, not the lane tint.
-  ctx.save();
-  if (bannerDraws.length) {
-    const top = lanesTop;
-    const fullH = lanesBottom - lanesTop;
-    ctx.beginPath();
-    ctx.rect(gridLeft, top, section.trackW, fullH);
-    for (const b of bannerDraws) ctx.rect(b.x, top, b.w, fullH);
-    ctx.clip("evenodd");
-  }
-  day.lanes.forEach((_, i) => {
-    const laneY = lanesTop + i * (LAYOUT.laneH + LAYOUT.laneGap);
-    ctx.fillStyle = hexToRgba("#ffffff", 0.02);
-    roundRect(ctx, gridLeft, laneY, section.trackW, LAYOUT.laneH, 8);
-    ctx.fill();
-  });
-  ctx.restore();
-
-  // Banners: grey blocks spanning the full height of all lanes (e.g.
-  // "Doors open"), positioned by time — so lane blocks always sit on top.
-  for (const { block, x: bx, w: bw } of bannerDraws) {
-    drawBlock(
-      ctx,
-      block,
-      bx,
-      lanesTop + INSET,
-      bw,
-      lanesBottom - lanesTop - INSET * 2,
-      BANNER_COLOR,
-      { center: true, hideEnd: true },
-    );
-  }
-
-  // Lane blocks, drawn on top of the banners.
-  day.lanes.forEach((lane, i) => {
-    const laneY = lanesTop + i * (LAYOUT.laneH + LAYOUT.laneGap);
-    const accent = lane.color || "#3c8ce2";
-    for (const block of lane.blocks) {
-      const start = parseTime(block.start);
-      const end = parseTime(block.end);
-      if (start == null || end == null || end <= start) continue;
-      drawBlock(
-        ctx,
-        block,
-        minutesToX(start),
-        laneY + INSET,
-        blockW(start, end),
-        LAYOUT.laneH - INSET * 2,
-        accent,
-      );
-    }
-  });
-}
-
-// Render the whole schedule (all days stacked) to a canvas.
-// `scale` controls export resolution. `aspectRatio` (width/height) forces the
-// canvas to that ratio by keeping the content's natural height and compressing
-// (or stretching) the time axis so blocks change width — text, block heights and
-// radii keep their proportions. Pass null to size tightly to the content.
 export function renderSchedule(
   canvas: HTMLCanvasElement,
   schedule: Schedule,
@@ -490,9 +67,6 @@ export function renderSchedule(
   aspectRatio: number | null = null,
   logoImg: HTMLImageElement | null = null,
 ): Measure {
-  // Natural layout, then solve for the time-axis factor that makes the content
-  // width match the target ratio (height is independent of the factor).
-  // Auto days scale via hScale; manual days use the target canvas width directly.
   const base = measureSchedule(schedule, 1);
   let hScale = 1;
   let forcedWidth: number | undefined;
@@ -516,89 +90,29 @@ export function renderSchedule(
     hScale === 1 && forcedWidth == null
       ? base
       : measureSchedule(schedule, hScale, forcedWidth);
+
   const W = m.width;
   const H = m.height;
 
   const ctx = canvas.getContext("2d");
   if (!ctx) return m;
 
-  // Only resize the backing buffer when it actually changes — reallocating it
-  // is expensive, and many edits (text, logo position) don't alter dimensions.
   const dw = Math.round(W * scale);
   const dh = Math.round(H * scale);
   if (canvas.width !== dw) canvas.width = dw;
   if (canvas.height !== dh) canvas.height = dh;
-  // Display at logical size, but let CSS (max-width:100% + height:auto) scale it
-  // down proportionally while preserving the aspect ratio.
   canvas.style.width = `${W}px`;
   canvas.style.height = "auto";
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
 
-  // Background (also clears the previous frame when the buffer wasn't resized).
-  ctx.fillStyle = THEME.bg;
-  ctx.fillRect(0, 0, W, H);
-
-  const left = LAYOUT.pad;
-  const titleH = titleHeight(schedule);
-
-  // Shared tournament title (hidden when a logo replaces it).
-  if (titleH > 0) {
-    ctx.textBaseline = "alphabetic";
-    ctx.textAlign = "left";
-    ctx.fillStyle = THEME.title;
-    ctx.font = `800 40px ${THEME.font}`;
-    ctx.fillText(schedule.title || "Tournament", left, LAYOUT.pad + 40);
-  }
-
-  // Day sections, stacked. Right-aligned days hug the right content edge.
-  const contentRight = W - LAYOUT.pad;
-  let y = LAYOUT.pad + titleH;
-  schedule.days.forEach((day, i) => {
-    const section = m.sections[i];
-    const x = day.align === "right" ? contentRight - section.w : left;
-    drawDaySection(ctx, day, x, y, section, W);
-    y += section.h + LAYOUT.dayGap;
+  renderScheduleToContext(ctx, {
+    schedule,
+    measure: m,
+    W,
+    H,
+    logoImg,
+    twitchGlyph,
   });
 
-  // Logo overlay. Positioned as a percentage of the free space so it stays in
-  // bounds; size is a percentage of the canvas width, aspect preserved.
-  const logo = schedule.logo;
-  if (logoImg && logo?.src && logoImg.naturalWidth > 0) {
-    const lw = (clamp(logo.size, 1, 100) / 100) * W;
-    const lh = lw * (logoImg.naturalHeight / logoImg.naturalWidth);
-    const lx = (clamp(logo.x, 0, 100) / 100) * (W - lw);
-    const ly = (clamp(logo.y, 0, 100) / 100) * (H - lh);
-    ctx.drawImage(logoImg, lx, ly, lw, lh);
-  }
-
-  // Subtle "Made with sched.gg" watermark, equidistant from the bottom & right.
-  const wmMargin = LAYOUT.pad / 2 - 8;
-  ctx.font = `600 15px ${THEME.font}`;
-  ctx.fillStyle = hexToRgba("#ffffff", 0.22);
-  ctx.textAlign = "right";
-  ctx.textBaseline = "bottom";
-  ctx.fillText("sched.gg", W - wmMargin, H - wmMargin);
-  ctx.textAlign = "left";
-  ctx.textBaseline = "alphabetic";
-
   return m;
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, Number(v) || 0));
-}
-
-function hexToRgba(hex: string, alpha: number): string {
-  const h = hex.replace("#", "");
-  const full =
-    h.length === 3
-      ? h
-          .split("")
-          .map((c) => c + c)
-          .join("")
-      : h;
-  const r = parseInt(full.slice(0, 2), 16);
-  const g = parseInt(full.slice(2, 4), 16);
-  const b = parseInt(full.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }

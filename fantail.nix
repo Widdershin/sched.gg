@@ -51,6 +51,8 @@
         buildPhase = ''
           export HOME="$TMPDIR"
           ln -s ${frontendNodeModules}/node_modules node_modules
+          mkdir -p ../shared
+          cp -r ${./shared}/* ../shared/
           npm run build
         '';
         installPhase = ''
@@ -64,22 +66,28 @@
         name = "sched-gg-backend";
         packageJson = ./backend/package.json;
         packageLock = ./backend/package-lock.json;
-        hash = "sha256-6osW/CPvRe/2nIW1a6CkyXlteBw+aCBEXA8uiFgw2YU=";
+        hash = "sha256-KIm/O+y7Rrhpi6FBzN2f9rqvgAvscmA0kjrKRwV2yog=";
         node = pkgs.nodejs_24;
       };
 
       backend = pkgs.stdenv.mkDerivation {
         name = "sched-gg-backend";
         src = ./backend;
-        nativeBuildInputs = [ pkgs.nodejs_24 ];
+        nativeBuildInputs = [ pkgs.nodejs_24 pkgs.inter ];
         buildPhase = ''
           export HOME="$TMPDIR"
           ln -s ${backendNodeModules}/node_modules node_modules
+          mkdir -p ../shared
+          cp -r ${./shared}/* ../shared/
+          cp ${pkgs.inter}/share/fonts/truetype/InterVariable.ttf ../shared/Inter.ttf
+          chmod -R +w ../shared
           npm run build
         '';
         installPhase = ''
-          mkdir -p $out
+          mkdir -p $out/node_modules
           cp dist/server.js $out/server.js
+          cp -r ../shared $out/shared
+          cp -r ${backendNodeModules}/node_modules/@napi-rs $out/node_modules/
         '';
       };
 
@@ -88,6 +96,7 @@
       # launched `nix run .#fantail`.
       backendServer = pkgs.writeShellScript "sched-gg-backend-server" ''
         export DATA_DIR="''${DATA_DIR:-$HOME/.local/share/sched.gg}"
+        export NODE_PATH="${backend}/node_modules"
         exec ${pkgs.nodejs_24}/bin/node --experimental-sqlite ${backend}/server.js
       '';
 

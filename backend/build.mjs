@@ -10,6 +10,8 @@ await esbuild.build({
   target: "node24",
   outfile: "dist/server.js",
   minify: true,
+  // Native modules can't be bundled — keep them external.
+  external: ["@napi-rs/canvas"],
   // Some transitive deps may call require() under ESM; provide a shim.
   banner: {
     js: 'import { createRequire as __cr } from "node:module"; const require = __cr(import.meta.url);',
