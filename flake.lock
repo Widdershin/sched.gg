@@ -6,11 +6,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1782392930,
-        "narHash": "sha256-8k/ULi6xghnk3ZDA6OGtJiOH1m9LwYh56KDEy8X91pU=",
+        "lastModified": 1782561134,
+        "narHash": "sha256-GCOqgllY/jeI38yeXYWCz75LqnFCtqIsJ8d2GGY+uak=",
         "ref": "refs/heads/main",
-        "rev": "51e183cec374efc67e1c74e761bdc42ead020ba7",
-        "revCount": 334,
+        "rev": "86c1cc425c9f4907444ae6975653ebb29bc84eb1",
+        "revCount": 337,
         "type": "git",
         "url": "ssh://git@github.com/Widdershin/fantail"
       },
