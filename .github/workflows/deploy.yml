@@ -1,0 +1,46 @@
+name: deploy
+
+# Fires when a pre-release is promoted to a full release (the human gate).
+# Pulls the already-built image from GHCR, re-tags it into fly's registry, and
+# deploys it to the sched-gg app.
+on:
+  release:
+    types: [released]
+
+permissions:
+  contents: read # checkout fly.toml at the released tag
+  packages: read # pull image from GHCR
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      FLY_APP: sched-gg
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Resolve image ref
+        id: meta
+        run: |
+          owner="$(echo '${{ github.repository_owner }}' | tr 'A-Z' 'a-z')"
+          echo "version=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${owner}/sched.gg" >> "$GITHUB_OUTPUT"
+
+      - name: Pull image from GHCR
+        run: |
+          echo '${{ github.token }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+          docker pull "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}"
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Re-tag into fly registry and deploy
+        run: |
+          src="${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}"
+          dst="registry.fly.io/${FLY_APP}:${{ steps.meta.outputs.version }}"
+          flyctl auth docker
+          docker tag "$src" "$dst"
+          docker push "$dst"
+          flyctl deploy --app "$FLY_APP" --image "$dst"

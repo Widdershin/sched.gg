@@ -1,0 +1,79 @@
+name: release
+
+# Every push to main: cut a calendar-versioned tag + GitHub pre-release, build the
+# container image with `fantail docker`, and push it to GHCR. Promoting the
+# pre-release to a full release triggers deploy.yml.
+on:
+  push:
+    branches: [main]
+
+# Serialise runs so the per-day version counter doesn't collide.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write # create tags / releases
+  packages: write # push to GHCR
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute version + image name
+        id: meta
+        run: |
+          git fetch --tags --force
+          date="$(date -u +%Y.%m.%d)"
+          n="$(( $(git tag -l "v${date}.*" | wc -l) + 1 ))"
+          version="v${date}.${n}"
+          owner="$(echo '${{ github.repository_owner }}' | tr 'A-Z' 'a-z')"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${owner}/sched.gg" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${version} -> ghcr.io/${owner}/sched.gg"
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+
+      # nix needs SSH access to the private fantail flake input
+      # (git+ssh://git@github.com/Widdershin/fantail).
+      - name: Set up SSH for the fantail flake input
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.FANTAIL_SSH_KEY }}
+      - name: Trust github.com host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Build image with fantail docker
+        env:
+          GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=accept-new"
+        run: |
+          nix run .#fantail -- docker \
+            -t "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}" \
+            -o image.tar.gz
+          docker load < image.tar.gz
+
+      - name: Push image to GHCR
+        run: |
+          echo '${{ github.token }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+          img="${{ steps.meta.outputs.image }}"
+          ver="${{ steps.meta.outputs.version }}"
+          docker push "${img}:${ver}"
+          docker tag "${img}:${ver}" "${img}:latest"
+          docker push "${img}:latest"
+
+      - name: Create pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.meta.outputs.version }}" \
+            --prerelease \
+            --target "${{ github.sha }}" \
+            --title "${{ steps.meta.outputs.version }}" \
+            --notes "Image: \`${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}\`. Promote this pre-release to a full release to deploy it to fly.io."

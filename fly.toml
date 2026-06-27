@@ -1,0 +1,36 @@
+# fly.io config for sched.gg. The container image is built by `fantail docker`
+# and supplied at deploy time (flyctl deploy --image ...), so there is no
+# [build] section here.
+#
+# NOTE: SQLite lives on the per-machine /data volume, so this app must run
+# exactly one machine. Do not `fly scale count` above 1.
+
+app = "sched-gg"
+primary_region = "syd" # set to your region; MUST match the data volume's region
+
+[env]
+  PORT = "8080"
+  DATA_DIR = "/data"
+  NODE_ENV = "production"
+  COOKIE_SECURE = "1"
+  STARTGG_REDIRECT_URI = "https://sched.gg/api/auth/startgg/callback"
+  STARTGG_SCOPE = "user.identity"
+
+# Secrets (set once, never in this file):
+#   fly secrets set --app sched-gg \
+#     SESSION_SECRET=... STARTGG_CLIENT_ID=... STARTGG_CLIENT_SECRET=...
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false   # keep the single DB-holding machine running
+  auto_start_machines = true
+  min_machines_running = 1
+
+[mounts]
+  source = "data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
