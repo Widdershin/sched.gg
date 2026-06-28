@@ -56,12 +56,15 @@ export interface GenerateOpts {
   logoImg: HTMLImageElement | null;
   entrants: Entrant[];
   onProgress?: (done: number, total: number) => void;
+  // Zip filename without extension; defaults to `lanyards-<title>`.
+  zipName?: string;
 }
 
 // Render each entrant's designed front (+ back when non-empty), zip (stored —
 // PNGs are already compressed), and download a single archive.
 export async function generateLanyardsZip(opts: GenerateOpts): Promise<void> {
-  const { schedule, design, output, logoImg, entrants, onProgress } = opts;
+  const { schedule, design, output, logoImg, entrants, onProgress, zipName } =
+    opts;
   const ratio = resolveRatio(output);
   const { w: sideW, h: sideH } = sidePixels(design);
   const hasBack = design.back.elements.length > 0;
@@ -118,8 +121,6 @@ export async function generateLanyardsZip(opts: GenerateOpts): Promise<void> {
   });
 
   const part = zipped as unknown as BlobPart;
-  triggerDownload(
-    new Blob([part], { type: "application/zip" }),
-    `lanyards-${safeName(schedule.title)}.zip`,
-  );
+  const name = zipName || `lanyards-${safeName(schedule.title)}`;
+  triggerDownload(new Blob([part], { type: "application/zip" }), `${name}.zip`);
 }

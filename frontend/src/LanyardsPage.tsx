@@ -141,18 +141,19 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
     }
   };
 
-  const generate = async () => {
-    if (!schedule || !schedule.lanyard || entrants.length === 0) return;
+  const runGenerate = async (list: Entrant[], zipName?: string) => {
+    if (!schedule || !schedule.lanyard || list.length === 0) return;
     setGenerating(true);
     setActionError(null);
-    setProgress({ done: 0, total: entrants.length });
+    setProgress({ done: 0, total: list.length });
     try {
       await generateLanyardsZip({
         schedule,
         design: schedule.lanyard,
         output,
         logoImg,
-        entrants,
+        entrants: list,
+        zipName,
         onProgress: (done, total) => setProgress({ done, total }),
       });
     } catch (e) {
@@ -161,6 +162,17 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
       setGenerating(false);
       setProgress(null);
     }
+  };
+
+  const generate = () => runGenerate(entrants);
+  const generateSelected = () => {
+    if (!selected) return;
+    const name =
+      (selected.gamerTag || "lanyard")
+        .replace(/[^a-z0-9]+/gi, "-")
+        .replace(/^-+|-+$/g, "")
+        .toLowerCase() || "lanyard";
+    runGenerate([selected], `lanyard-${name}`);
   };
 
   // --- Gating states ---------------------------------------------------------
@@ -220,7 +232,15 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
               {entrants.length} entrants · last synced {formatSynced(syncedAt)}
             </span>
             <button
-              className="btn primary push-right"
+              className="btn ghost push-right"
+              onClick={generateSelected}
+              disabled={generating || !selected}
+              title="Download just the selected entrant's lanyard"
+            >
+              Generate selected
+            </button>
+            <button
+              className="btn primary"
               onClick={generate}
               disabled={generating || entrants.length === 0}
             >
