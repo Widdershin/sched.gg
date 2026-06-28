@@ -42,6 +42,8 @@ function resolveRatio(output: OutputSettings): number | null {
 }
 
 const STAGE_H = 520; // on-screen card height in CSS px
+const SNAP = 0.012; // centre snap threshold (fraction of side)
+const BLEED_MM = 3; // bleed indicator inset
 
 interface Props {
   design: LanyardDesign;
@@ -64,6 +66,7 @@ export default function LanyardDesigner({
   const [selectedElId, setSelectedElId] = useState<string | null>(null);
   const [images, setImages] = useState<Map<string, HTMLImageElement>>(new Map());
   const [assetTick, setAssetTick] = useState(0);
+  const [guides, setGuides] = useState({ v: false, h: false });
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -214,18 +217,42 @@ export default function LanyardDesigner({
     if (!st || !box) return;
     const dx = (e.clientX - st.startX) / box.width;
     const dy = (e.clientY - st.startY) / box.height;
-    updateEl(st.id, (el) => {
-      if (st.mode === "move") {
-        el.x = Math.min(1, Math.max(0, st.origX + dx));
-        el.y = Math.min(1, Math.max(0, st.origY + dy));
-      } else {
+
+    if (st.mode === "resize") {
+      updateEl(st.id, (el) => {
         el.w = Math.min(1, Math.max(0.03, st.origW + dx));
+      });
+      return;
+    }
+
+    // Move, snapping the element's centre to the side's centre on either axis.
+    let nx = Math.min(1, Math.max(0, st.origX + dx));
+    let ny = Math.min(1, Math.max(0, st.origY + dy));
+    let gv = false;
+    let gh = false;
+    const el = currentSide.elements.find((e2) => e2.id === st.id);
+    if (el) {
+      // elementRect with a 1×1 side yields fractional rect (incl. derived height).
+      const r = elementRect({ ...el, x: nx, y: ny }, 1, 1, elAspect(el));
+      if (Math.abs(r.x + r.w / 2 - 0.5) < SNAP) {
+        nx = 0.5 - r.w / 2;
+        gv = true;
       }
+      if (Math.abs(r.y + r.h / 2 - 0.5) < SNAP) {
+        ny = 0.5 - r.h / 2;
+        gh = true;
+      }
+    }
+    setGuides({ v: gv, h: gh });
+    updateEl(st.id, (el2) => {
+      el2.x = nx;
+      el2.y = ny;
     });
   };
 
   const onPointerUp = (e: ReactPointerEvent) => {
     drag.current = null;
+    setGuides({ v: false, h: false });
     stageRef.current?.releasePointerCapture?.(e.pointerId);
   };
 
@@ -304,6 +331,18 @@ export default function LanyardDesigner({
             ref={canvasRef}
             style={{ width: stageW, height: STAGE_H, display: "block" }}
           />
+          {/* 3mm bleed indicator (preview only — not exported). */}
+          <div
+            className="bleed-guide"
+            style={{
+              left: (BLEED_MM / design.widthMm) * stageW,
+              right: (BLEED_MM / design.widthMm) * stageW,
+              top: (BLEED_MM / design.heightMm) * STAGE_H,
+              bottom: (BLEED_MM / design.heightMm) * STAGE_H,
+            }}
+          />
+          {guides.v && <div className="snap-guide v" />}
+          {guides.h && <div className="snap-guide h" />}
           {currentSide.elements.map((el) => {
             const r = elementRect(el, stageW, STAGE_H, elAspect(el));
             const isSel = el.id === selectedElId;

@@ -761,3 +761,29 @@ select option {
   display: flex;
   gap: 6px;
 }
+
+/* Designer overlays: bleed + centre snap guides (preview only) */
+.bleed-guide {
+  position: absolute;
+  border: 1px dashed rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+}
+.snap-guide {
+  position: absolute;
+  background: #ff4d8d;
+  pointer-events: none;
+}
+.snap-guide.v {
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-0.5px);
+}
+.snap-guide.h {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  transform: translateY(-0.5px);
+}
