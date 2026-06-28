@@ -20,6 +20,24 @@ function imgAspect(img: HTMLImageElement | HTMLCanvasElement): number {
   return h > 0 ? w / h : 1;
 }
 
+// Font size (px) to draw `text`: the requested `maxFontPx`, shrunk only as far
+// as needed so it still fits `targetWidthPx` on one line (so long player tags
+// never overflow the box).
+export function fitTextFontPx(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  bold: boolean,
+  maxFontPx: number,
+  targetWidthPx: number,
+  fontFamily: string = THEME.font,
+): number {
+  const base = 100;
+  ctx.font = `${bold ? 700 : 400} ${base}px ${fontFamily}`;
+  const w = ctx.measureText(text || " ").width;
+  const widthFit = w > 0 ? (targetWidthPx / w) * base : maxFontPx;
+  return Math.min(maxFontPx, widthFit);
+}
+
 // Draw a full side (background + elements in z-order) into ctx, scaled to sideW×sideH.
 export function renderLanyardSide(
   ctx: CanvasRenderingContext2D,
@@ -35,25 +53,29 @@ export function renderLanyardSide(
     if (el.type === "image") {
       const img = el.src ? assets.images.get(el.src) : undefined;
       if (!img) continue;
-      const r = elementRect(el, sideW, sideH, imgAspect(img));
+      const r = elementRect(el, sideW, sideH, { aspect: imgAspect(img) });
       ctx.drawImage(img, r.x, r.y, r.w, r.h);
     } else if (el.type === "schedule") {
       const img = assets.scheduleImg;
       if (!img) continue;
-      const r = elementRect(el, sideW, sideH, imgAspect(img));
+      const r = elementRect(el, sideW, sideH, { aspect: imgAspect(img) });
       ctx.drawImage(img, r.x, r.y, r.w, r.h);
     } else if (el.type === "text" || el.type === "tag") {
       const text =
         el.type === "tag" ? assets.tag || "{Player Tag}" : el.text || "";
-      const r = elementRect(el, sideW, sideH);
-      ctx.font = `${el.bold ? 700 : 400} ${r.fontPx}px ${THEME.font}`;
+      // Draw at the requested size, shrinking only to fit the box width.
+      const maxFontPx = (el.fontFrac ?? 0.07) * sideH;
+      const fontPx = fitTextFontPx(ctx, text, !!el.bold, maxFontPx, el.w * sideW);
+      const r = elementRect(el, sideW, sideH, { fontPx });
+      ctx.font = `${el.bold ? 700 : 400} ${fontPx}px ${THEME.font}`;
       ctx.fillStyle = el.color || "#ffffff";
-      ctx.textBaseline = "top";
+      ctx.textBaseline = "middle";
       const align = el.align || "left";
       ctx.textAlign = align;
       const tx =
         align === "center" ? r.x + r.w / 2 : align === "right" ? r.x + r.w : r.x;
-      ctx.fillText(text, tx, r.y);
+      ctx.fillText(text, tx, r.y + r.h / 2);
+      ctx.textBaseline = "alphabetic";
       ctx.textAlign = "left";
     } else if (el.type === "shape") {
       const r = elementRect(el, sideW, sideH);

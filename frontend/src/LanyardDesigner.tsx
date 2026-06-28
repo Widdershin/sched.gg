@@ -5,8 +5,17 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { elementRect, makeElement, sidePixels } from "../../shared/lanyard.js";
-import { renderLanyardSide, renderEntrantSchedule } from "./lanyard-render";
+import {
+  elementRect,
+  makeElement,
+  sidePixels,
+  type ElementRectOpts,
+} from "../../shared/lanyard.js";
+import {
+  renderLanyardSide,
+  renderEntrantSchedule,
+  fitTextFontPx,
+} from "./lanyard-render";
 import { onAssetsReady } from "./render";
 import { fileToImageDataUrl } from "./images";
 import type {
@@ -72,6 +81,11 @@ export default function LanyardDesigner({
   const stageRef = useRef<HTMLDivElement>(null);
   const drag = useRef<DragState | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  // Offscreen context just for measuring fitted text size.
+  const measureCtx = useMemo(
+    () => document.createElement("canvas").getContext("2d"),
+    [],
+  );
 
   useEffect(() => onAssetsReady(() => setAssetTick((n) => n + 1)), []);
 
@@ -190,6 +204,26 @@ export default function LanyardDesigner({
     return undefined;
   };
 
+  // elementRect options for an element at a given side size (px): image/schedule
+  // use intrinsic aspect; text/tag use the fitted (max, then width-capped) size.
+  const rectOpts = (
+    el: LanyardElement,
+    sideWpx: number,
+    sideHpx: number,
+  ): ElementRectOpts => {
+    if (el.type === "image" || el.type === "schedule") {
+      return { aspect: elAspect(el) };
+    }
+    if ((el.type === "text" || el.type === "tag") && measureCtx) {
+      const text = el.type === "tag" ? tag || "{Player Tag}" : el.text || "";
+      const maxFontPx = (el.fontFrac ?? 0.07) * sideHpx;
+      return {
+        fontPx: fitTextFontPx(measureCtx, text, !!el.bold, maxFontPx, el.w * sideWpx),
+      };
+    }
+    return {};
+  };
+
   const onElPointerDown = (
     el: LanyardElement,
     mode: "move" | "resize",
@@ -232,14 +266,15 @@ export default function LanyardDesigner({
     let gh = false;
     const el = currentSide.elements.find((e2) => e2.id === st.id);
     if (el) {
-      // elementRect with a 1×1 side yields fractional rect (incl. derived height).
-      const r = elementRect({ ...el, x: nx, y: ny }, 1, 1, elAspect(el));
-      if (Math.abs(r.x + r.w / 2 - 0.5) < SNAP) {
-        nx = 0.5 - r.w / 2;
+      const r = elementRect(el, stageW, STAGE_H, rectOpts(el, stageW, STAGE_H));
+      const wFrac = r.w / stageW;
+      const hFrac = r.h / STAGE_H;
+      if (Math.abs(nx + wFrac / 2 - 0.5) < SNAP) {
+        nx = 0.5 - wFrac / 2;
         gv = true;
       }
-      if (Math.abs(r.y + r.h / 2 - 0.5) < SNAP) {
-        ny = 0.5 - r.h / 2;
+      if (Math.abs(ny + hFrac / 2 - 0.5) < SNAP) {
+        ny = 0.5 - hFrac / 2;
         gh = true;
       }
     }
@@ -344,7 +379,7 @@ export default function LanyardDesigner({
           {guides.v && <div className="snap-guide v" />}
           {guides.h && <div className="snap-guide h" />}
           {currentSide.elements.map((el) => {
-            const r = elementRect(el, stageW, STAGE_H, elAspect(el));
+            const r = elementRect(el, stageW, STAGE_H, rectOpts(el, stageW, STAGE_H));
             const isSel = el.id === selectedElId;
             return (
               <div
@@ -482,8 +517,11 @@ function ElementProps({
               />
             </label>
           )}
-          {slider("Size", el.fontFrac ?? 0.07, 0.02, 0.25, 0.005, (v) =>
+          {slider("Max size", el.fontFrac ?? 0.07, 0.02, 0.25, 0.005, (v) =>
             updateEl(el.id, (e) => (e.fontFrac = v)),
+          )}
+          {slider("Height", el.h ?? 0.1, 0.02, 1, 0.005, (v) =>
+            updateEl(el.id, (e) => (e.h = v)),
           )}
           <label className="prop-row">
             <span>Color</span>

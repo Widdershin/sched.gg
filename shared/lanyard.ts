@@ -30,26 +30,34 @@ export interface ElementRect {
   fontPx: number;
 }
 
+export interface ElementRectOpts {
+  aspect?: number; // image/schedule intrinsic w/h
+  fontPx?: number; // text/tag: measured size that fits the box width
+}
+
 // Resolve an element's pixel rect within a side of the given pixel size.
-// `intrinsicAspect` (w/h) is required for image/schedule so height tracks the
-// source; text/tag derive height from font size; shapes use their own h.
+// `aspect` (w/h) is required for image/schedule so height tracks the source;
+// text/tag take a measured `fontPx` (the text is fit to the box width); shapes
+// use their own h.
 export function elementRect(
   el: LanyardElement,
   sideW: number,
   sideH: number,
-  intrinsicAspect?: number,
+  opts: ElementRectOpts = {},
 ): ElementRect {
   const x = el.x * sideW;
   const y = el.y * sideH;
   const w = el.w * sideW;
 
   if (el.type === "image" || el.type === "schedule") {
-    const aspect = intrinsicAspect && intrinsicAspect > 0 ? intrinsicAspect : 1;
+    const aspect = opts.aspect && opts.aspect > 0 ? opts.aspect : 1;
     return { x, y, w, h: w / aspect, fontPx: 0 };
   }
   if (el.type === "text" || el.type === "tag") {
-    const fontPx = (el.fontFrac ?? 0.07) * sideH;
-    return { x, y, w, h: fontPx * 1.3, fontPx };
+    const fontPx = opts.fontPx ?? (el.fontFrac ?? 0.07) * sideH;
+    // Explicit container height (text is centred within it); else the line box.
+    const h = el.h != null ? el.h * sideH : fontPx * 1.3;
+    return { x, y, w, h, fontPx };
   }
   // shape
   const h = (el.h ?? 0.05) * sideH;
@@ -70,6 +78,7 @@ export function makeElement(
         color: "#ffffff",
         align: "left",
         w: 0.5,
+        h: 0.1,
       });
       break;
     case "tag":
@@ -79,6 +88,7 @@ export function makeElement(
         align: "left",
         bold: true,
         w: 0.7,
+        h: 0.14,
       });
       break;
     case "schedule":
