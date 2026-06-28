@@ -14,7 +14,7 @@ primary_region = "syd" # set to your region; MUST match the data volume's region
   NODE_ENV = "production"
   COOKIE_SECURE = "1"
   STARTGG_REDIRECT_URI = "https://sched.gg/api/auth/startgg/callback"
-  STARTGG_SCOPE = "user.identity"
+  STARTGG_SCOPE = "user.identity tournament.manager"
 
 # Secrets (set once, never in this file):
 #   fly secrets set --app sched-gg \

@@ -46,7 +46,19 @@ function createUser(username: string | null, displayName: string | null): UserRo
 auth.get("/auth/csrf", (c) => c.json({ token: issueCsrf(c) }));
 
 // --- current user ----------------------------------------------------------
-auth.get("/auth/me", (c) => c.json({ user: c.get("user") ?? null }));
+auth.get("/auth/me", (c) => {
+  const user = c.get("user") ?? null;
+  let startggLinked = false;
+  if (user) {
+    const row = db
+      .prepare(
+        "SELECT 1 FROM auth_identities WHERE provider = 'startgg' AND user_id = ? AND access_token IS NOT NULL",
+      )
+      .get(user.id);
+    startggLinked = !!row;
+  }
+  return c.json({ user, startggLinked });
+});
 
 // --- register (username + password) ---------------------------------------
 auth.post("/auth/register", requireCsrf, async (c) => {
@@ -142,15 +154,18 @@ auth.get("/auth/startgg/callback", async (c) => {
   }
 
   let sgUser;
+  let tokens;
   try {
-    const accessToken = await exchangeCode(code);
-    sgUser = await fetchCurrentUser(accessToken);
+    tokens = await exchangeCode(code);
+    sgUser = await fetchCurrentUser(tokens.accessToken);
   } catch (err) {
     console.error("[startgg] oauth error", err);
     return c.json({ error: "start.gg sign-in failed" }, 502);
   }
 
   const now = Date.now();
+  const tokenExpiresAt =
+    tokens.expiresIn != null ? now + tokens.expiresIn * 1000 : null;
   const identity = db
     .prepare(
       "SELECT user_id FROM auth_identities WHERE provider = 'startgg' AND provider_account_id = ?",
@@ -163,16 +178,29 @@ auth.get("/auth/startgg/callback", async (c) => {
   if (identity) {
     userId = identity.user_id;
     db.prepare(
-      "UPDATE auth_identities SET metadata = ?, updated_at = ? WHERE provider = 'startgg' AND provider_account_id = ?",
-    ).run(metadata, now, sgUser.id);
+      `UPDATE auth_identities
+          SET metadata = ?, access_token = ?, refresh_token = ?, token_expires_at = ?, updated_at = ?
+        WHERE provider = 'startgg' AND provider_account_id = ?`,
+    ).run(metadata, tokens.accessToken, tokens.refreshToken, tokenExpiresAt, now, sgUser.id);
   } else {
     const user = createUser(null, displayName);
     userId = user.id;
     db.prepare(
       `INSERT INTO auth_identities
-         (id, user_id, provider, provider_account_id, secret, metadata, created_at, updated_at)
-       VALUES (?, ?, 'startgg', ?, NULL, ?, ?, ?)`,
-    ).run(uuid(), userId, sgUser.id, metadata, now, now);
+         (id, user_id, provider, provider_account_id, secret, metadata,
+          access_token, refresh_token, token_expires_at, created_at, updated_at)
+       VALUES (?, ?, 'startgg', ?, NULL, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      uuid(),
+      userId,
+      sgUser.id,
+      metadata,
+      tokens.accessToken,
+      tokens.refreshToken,
+      tokenExpiresAt,
+      now,
+      now,
+    );
   }
 
   createSession(c, userId, c.req.header("user-agent"));

@@ -9,6 +9,9 @@ import type {
   Schedule,
   AspectMode,
   OutputSettings,
+  StartggEvent,
+  StartggBinding,
+  Entrant,
 } from "../../shared/types.js";
 
 export type {
@@ -21,6 +24,9 @@ export type {
   Schedule,
   AspectMode,
   OutputSettings,
+  StartggEvent,
+  StartggBinding,
+  Entrant,
 };
 
 // Mutate a draft schedule in place (used with App's structuredClone helper).

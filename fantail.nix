@@ -40,7 +40,7 @@
         name = "sched-gg-frontend";
         packageJson = ./frontend/package.json;
         packageLock = ./frontend/package-lock.json;
-        hash = "sha256-m7B6MgUePuy+5EgMz9lVbVI7KnvyDCCQtjOLH+HX7Fg=";
+        hash = "sha256-zSev67+8RiGZYedDT+BJWuaPIhCXTrNHcxi0OkxCpGA=";
         node = pkgs.nodejs;
       };
 
@@ -106,16 +106,26 @@
         exec ${pkgs.nodejs_24}/bin/node --experimental-sqlite ${backend}/server.js
       '';
 
+      # The app shell as a directory so it can back a wildcard (SPA) route:
+      # any path that isn't a real file falls through to this index.html, letting
+      # the client router handle deep links like /lanyards/<id>.
+      appShell = pkgs.runCommand "sched-gg-app-shell" { } ''
+        mkdir -p $out
+        cp ${./frontend/index.html} $out/index.html
+      '';
+
       # Static builds (`nix build .#fantailProject`) throw on process routes, so
       # the backend is gated out there via `args.backend = "false"` (see flake.nix)
       # and included by default under `nix run .#fantail`.
       enableBackend = (loader.args.backend or "true") != "false";
     in
+    # Routes match bottom-to-top: /api (process) and /js (bundle/fonts) resolve
+    # before the catch-all, which serves the app shell for every other path.
     [
-      # App shell. References /js/bundle.js and /js/bundle.css.
-      (get "/" ./frontend/index.html)
+      # SPA shell. References /js/bundle.js and /js/bundle.css.
+      (get "/*" appShell)
 
-      # Compiled JS + CSS bundle.
+      # Compiled JS + CSS bundle (+ preloaded fonts).
       (get "/js" frontend)
     ]
     ++ pkgs.lib.optional enableBackend (process "/api" backendServer);

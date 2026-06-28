@@ -88,6 +88,32 @@ const MIGRATIONS: Migration[] = [
     version: 4,
     sql: `ALTER TABLE schedules ADD COLUMN rendered_image BLOB;`,
   },
+  {
+    version: 5,
+    sql: `
+      -- Persist the start.gg OAuth tokens so we can query the API later as the
+      -- signed-in user (not just during the login callback).
+      ALTER TABLE auth_identities ADD COLUMN access_token TEXT;
+      ALTER TABLE auth_identities ADD COLUMN refresh_token TEXT;
+      ALTER TABLE auth_identities ADD COLUMN token_expires_at INTEGER;
+
+      -- When the schedule's entrants were last synced from start.gg.
+      ALTER TABLE schedules ADD COLUMN entrants_synced_at INTEGER;
+
+      -- Tournament entrants pulled from start.gg, persisted per schedule and
+      -- used to generate per-entrant (lanyard) images.
+      CREATE TABLE schedule_entrants (
+        id             TEXT PRIMARY KEY,
+        schedule_id    TEXT NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
+        participant_id TEXT NOT NULL,      -- start.gg participant id
+        gamer_tag      TEXT,
+        event_ids      TEXT NOT NULL,      -- JSON array of start.gg event ids
+        updated_at     INTEGER NOT NULL,
+        UNIQUE (schedule_id, participant_id)
+      );
+      CREATE INDEX idx_entrants_schedule ON schedule_entrants(schedule_id);
+    `,
+  },
 ];
 
 function migrateExistingLogos(db: DatabaseSync): void {

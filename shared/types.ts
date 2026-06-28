@@ -7,6 +7,7 @@ export interface Block {
   end: string; // "HH:MM" (24h)
   stream: string;
   stream2: string;
+  eventId?: string; // linked start.gg event id (for per-entrant highlighting)
 }
 
 export interface Lane {
@@ -35,10 +36,32 @@ export interface Logo {
   y: number; // 0-100 % of free space
 }
 
+// A start.gg event the schedule's blocks can be linked to.
+export interface StartggEvent {
+  id: string;
+  name: string;
+}
+
+// The start.gg tournament a schedule is bound to, plus its event list (cached
+// for the per-block event dropdowns in the editor).
+export interface StartggBinding {
+  slug: string;
+  events: StartggEvent[];
+}
+
 export interface Schedule {
   title: string;
   days: Day[];
   logo?: Logo | null;
+  startgg?: StartggBinding | null;
+}
+
+// A tournament entrant (start.gg participant) and the events they're in.
+// Persisted server-side per schedule; drives the lanyards page.
+export interface Entrant {
+  id: string; // start.gg participant id
+  gamerTag: string;
+  eventIds: string[];
 }
 
 export type AspectMode =

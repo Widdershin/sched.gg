@@ -19,6 +19,7 @@ interface AuthValue {
   loading: boolean;
   online: boolean;
   methods: AuthMethods;
+  startggLinked: boolean;
   refresh: () => Promise<void>;
   login: (username: string, password: string) => Promise<User>;
   register: (username: string, password: string) => Promise<User>;
@@ -44,6 +45,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
   // Whether the backend is reachable at all (offline / static build => false).
   const [online, setOnline] = useState(false);
+  // Whether the signed-in user has a usable start.gg token (lanyards feature).
+  const [startggLinked, setStartggLinked] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -51,9 +54,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setMethods({ devLogin: !!h.devLogin, startgg: !!h.startgg });
       setOnline(true);
       setUser(me.user ?? null);
+      setStartggLinked(!!me.startggLinked);
     } catch {
       setOnline(false);
       setUser(null);
+      setStartggLinked(false);
     } finally {
       setLoading(false);
     }
@@ -88,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     online,
     methods,
+    startggLinked,
     refresh,
     login,
     register,

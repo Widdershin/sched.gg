@@ -3,7 +3,29 @@ import { env } from "../env.js";
 // start.gg OAuth 2.0 endpoints. Confirm scopes/paths at developer.start.gg.
 const AUTHORIZE_URL = "https://start.gg/oauth/authorize";
 const TOKEN_URL = "https://api.start.gg/oauth/access_token";
-const GQL_URL = "https://api.start.gg/gql/alpha";
+export const GQL_URL = "https://api.start.gg/gql/alpha";
+
+export interface TokenSet {
+  accessToken: string;
+  refreshToken: string | null;
+  expiresIn: number | null; // seconds until the access token expires
+}
+
+function parseTokenResponse(raw: unknown): TokenSet {
+  const json = (raw ?? {}) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+  };
+  if (!json.access_token) {
+    throw new Error("start.gg token response missing access_token");
+  }
+  return {
+    accessToken: json.access_token,
+    refreshToken: json.refresh_token ?? null,
+    expiresIn: typeof json.expires_in === "number" ? json.expires_in : null,
+  };
+}
 
 export function buildAuthorizeUrl(state: string): string {
   const params = new URLSearchParams({
@@ -16,7 +38,7 @@ export function buildAuthorizeUrl(state: string): string {
   return `${AUTHORIZE_URL}?${params.toString()}`;
 }
 
-export async function exchangeCode(code: string): Promise<string> {
+export async function exchangeCode(code: string): Promise<TokenSet> {
   const res = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
@@ -32,9 +54,25 @@ export async function exchangeCode(code: string): Promise<string> {
   if (!res.ok) {
     throw new Error(`start.gg token exchange failed: ${res.status}`);
   }
-  const json = (await res.json()) as { access_token?: string };
-  if (!json.access_token) throw new Error("start.gg token response missing access_token");
-  return json.access_token;
+  return parseTokenResponse(await res.json());
+}
+
+export async function refreshAccessToken(refreshToken: string): Promise<TokenSet> {
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: env.startgg.clientId,
+      client_secret: env.startgg.clientSecret,
+      scope: env.startgg.scope,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`start.gg token refresh failed: ${res.status}`);
+  }
+  return parseTokenResponse(await res.json());
 }
 
 export interface StartggUser {

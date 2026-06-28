@@ -66,7 +66,9 @@ export const env = {
     redirectUri:
       process.env.STARTGG_REDIRECT_URI ||
       "http://localhost:3095/api/auth/startgg/callback",
-    scope: process.env.STARTGG_SCOPE || "user.identity",
+    // `tournament.manager` lets the signed-in user read participants of the
+    // tournaments they run (needed for lanyard generation).
+    scope: process.env.STARTGG_SCOPE || "user.identity tournament.manager",
   },
 };
 

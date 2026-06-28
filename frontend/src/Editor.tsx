@@ -1,12 +1,20 @@
 import { makeLane, makeBlock, LANE_COLORS, parseTime } from "./model";
-import type { Block, Day, Lane, Schedule, UpdateFn } from "./types";
+import type { Block, Day, Lane, Schedule, StartggEvent, UpdateFn } from "./types";
 
 // Find a day within the schedule clone by id.
 function findDay(s: Schedule, dayId: string): Day | undefined {
   return s.days.find((d) => d.id === dayId);
 }
 
-export default function Editor({ day, update }: { day: Day; update: UpdateFn }) {
+export default function Editor({
+  day,
+  update,
+  events = [],
+}: {
+  day: Day;
+  update: UpdateFn;
+  events?: StartggEvent[];
+}) {
   const setDay = (mutator: (d: Day) => void) =>
     update((s) => {
       const d = findDay(s, day.id);
@@ -104,6 +112,7 @@ export default function Editor({ day, update }: { day: Day; update: UpdateFn }) 
             <BlockEditor
               key={block.id}
               block={block}
+              events={events}
               setBlock={(mutator) =>
                 update((s) => {
                   const b = findDay(s, day.id)?.banners?.find(
@@ -134,6 +143,7 @@ export default function Editor({ day, update }: { day: Day; update: UpdateFn }) 
             lane={lane}
             dayId={day.id}
             update={update}
+            events={events}
           />
         ))}
       </div>
@@ -149,10 +159,12 @@ function LaneEditor({
   lane,
   dayId,
   update,
+  events,
 }: {
   lane: Lane;
   dayId: string;
   update: UpdateFn;
+  events: StartggEvent[];
 }) {
   const setLane = (mutator: (l: Lane) => void) =>
     update((s) => {
@@ -210,6 +222,7 @@ function LaneEditor({
           <BlockEditor
             key={block.id}
             block={block}
+            events={events}
             setBlock={(mutator) =>
               update((s) => {
                 const l = findDay(s, dayId)?.lanes.find((x) => x.id === lane.id);
@@ -239,10 +252,12 @@ function LaneEditor({
 // the day's full-width banner blocks.
 function BlockEditor({
   block,
+  events,
   setBlock,
   removeBlock,
 }: {
   block: Block;
+  events: StartggEvent[];
   setBlock: (mutator: (b: Block) => void) => void;
   removeBlock: () => void;
 }) {
@@ -297,6 +312,29 @@ function BlockEditor({
           ✕
         </button>
       </div>
+      {events.length > 0 && (
+        <label className="field grow">
+          <span>start.gg event</span>
+          <select
+            value={block.eventId ?? ""}
+            onChange={(e) =>
+              setBlock((b) => {
+                const v = e.target.value;
+                if (v) b.eventId = v;
+                else delete b.eventId;
+              })
+            }
+            title="Link this block to a start.gg event (for per-entrant highlighting)"
+          >
+            <option value="">— none —</option>
+            {events.map((ev) => (
+              <option key={ev.id} value={ev.id}>
+                {ev.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {invalidTime && <p className="warn">End time must be after start time.</p>}
     </div>
   );
