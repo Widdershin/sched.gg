@@ -49,11 +49,52 @@ export interface StartggBinding {
   events: StartggEvent[];
 }
 
+// --- Lanyard designer --------------------------------------------------------
+
+export type LanyardElementType = "image" | "text" | "tag" | "schedule" | "shape";
+
+// A placeable element on one side of a lanyard. Positions/sizes are fractions of
+// the side (0..1) so they're resolution-independent. `tag` and `schedule` are
+// dynamic — filled per entrant at render time; the rest are shared across cards.
+export interface LanyardElement {
+  id: string;
+  type: LanyardElementType;
+  x: number; // top-left, fraction of side width
+  y: number; // top-left, fraction of side height
+  w: number; // width, fraction of side width
+  h?: number; // shapes only: height, fraction of side height (others derive)
+  // image
+  src?: string; // downscaled PNG data URL
+  // text / tag
+  text?: string; // static content (type "text")
+  fontFrac?: number; // font size, fraction of side height
+  color?: string;
+  align?: "left" | "center" | "right";
+  bold?: boolean;
+  // shape
+  shape?: "rect" | "line";
+  fill?: string;
+}
+
+export interface LanyardSide {
+  background: string; // hex color
+  elements: LanyardElement[]; // array order = z-order (last drawn on top)
+}
+
+export interface LanyardDesign {
+  widthMm: number;
+  heightMm: number;
+  dpi: number;
+  front: LanyardSide;
+  back: LanyardSide;
+}
+
 export interface Schedule {
   title: string;
   days: Day[];
   logo?: Logo | null;
   startgg?: StartggBinding | null;
+  lanyard?: LanyardDesign | null;
 }
 
 // A tournament entrant (start.gg participant) and the events they're in.

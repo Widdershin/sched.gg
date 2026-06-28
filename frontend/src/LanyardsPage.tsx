@@ -1,22 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "./api";
 import { useAuth } from "./AuthContext";
-import { renderSchedule, onAssetsReady } from "./render";
 import { generateLanyardsZip } from "./lanyards";
-import type { Entrant, OutputSettings, Schedule } from "./types";
+import LanyardDesigner from "./LanyardDesigner";
+import { defaultDesign } from "../../shared/lanyard.js";
+import type { Entrant, LanyardDesign, OutputSettings, Schedule } from "./types";
 
 const DEFAULT_OUTPUT: OutputSettings = { mode: "fit", w: 16, h: 9, scale: 2 };
-
-function resolveRatio(output: OutputSettings): number | null {
-  const { mode, w, h } = output;
-  if (mode === "fit") return null;
-  if (mode === "custom") {
-    const r = Number(w) / Number(h);
-    return Number.isFinite(r) && r > 0 ? r : null;
-  }
-  const [pw, ph] = mode.split(":").map(Number);
-  return pw / ph;
-}
+const SAVE_DEBOUNCE_MS = 800;
 
 function formatSynced(ts: number | null): string {
   if (!ts) return "never";
@@ -25,7 +16,6 @@ function formatSynced(ts: number | null): string {
 
 export default function LanyardsPage({ scheduleId }: { scheduleId: string | null }) {
   const auth = useAuth();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [output, setOutput] = useState<OutputSettings>(DEFAULT_OUTPUT);
@@ -42,8 +32,8 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
-  const [assetTick, setAssetTick] = useState(0);
-  useEffect(() => onAssetsReady(() => setAssetTick((n) => n + 1)), []);
+  // Suppress the autosave that would otherwise fire from the initial load.
+  const loadedScheduleRef = useRef(false);
 
   // Load the schedule, its logo, and the persisted entrants.
   useEffect(() => {
@@ -75,7 +65,9 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
             /* draw without logo */
           }
         }
+        if (!data.lanyard) data.lanyard = defaultDesign();
         setSchedule(data);
+        loadedScheduleRef.current = true;
         const res = await api.getEntrants(scheduleId);
         if (cancelled) return;
         setEntrants(res.entrants);
@@ -104,20 +96,32 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
     return entrants.filter((e) => e.gamerTag.toLowerCase().includes(q));
   }, [entrants, search]);
 
-  // Render the selected entrant's personalized preview.
+  // Apply a mutation to a fresh clone of the schedule (mirrors App.tsx).
+  const update = (mutator: (s: Schedule) => void) =>
+    setSchedule((prev) => {
+      if (!prev) return prev;
+      const next = structuredClone(prev);
+      mutator(next);
+      return next;
+    });
+
+  // Edit the lanyard design in place.
+  const updateDesign = (mutator: (d: LanyardDesign) => void) =>
+    update((s) => {
+      if (s.lanyard) mutator(s.lanyard);
+    });
+
+  // Debounced server autosave of the design (data only). Strip the logo blob src
+  // (the PNG lives in the dedicated logo endpoint), like App.tsx.
   useEffect(() => {
-    if (!schedule || !canvasRef.current) return;
-    renderSchedule(
-      canvasRef.current,
-      schedule,
-      output.scale,
-      resolveRatio(output),
-      logoImg,
-      selected
-        ? { highlightEventIds: new Set(selected.eventIds), subtitle: selected.gamerTag }
-        : {},
-    );
-  }, [schedule, output, logoImg, selected, assetTick]);
+    if (!scheduleId || !schedule || !loadedScheduleRef.current) return;
+    const t = setTimeout(() => {
+      const clean = structuredClone(schedule);
+      if (clean.logo) delete (clean.logo as unknown as Record<string, unknown>).src;
+      api.updateSchedule(scheduleId, { data: clean }).catch(() => {});
+    }, SAVE_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [schedule, scheduleId]);
 
   const syncEntrants = async () => {
     if (!scheduleId) return;
@@ -138,13 +142,14 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
   };
 
   const generate = async () => {
-    if (!schedule || entrants.length === 0) return;
+    if (!schedule || !schedule.lanyard || entrants.length === 0) return;
     setGenerating(true);
     setActionError(null);
     setProgress({ done: 0, total: entrants.length });
     try {
       await generateLanyardsZip({
         schedule,
+        design: schedule.lanyard,
         output,
         logoImg,
         entrants,
@@ -252,7 +257,16 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
               </ul>
             </div>
             <div className="canvas-scroll" style={{ flex: 1 }}>
-              <canvas ref={canvasRef} className="schedule-canvas" />
+              {schedule?.lanyard && (
+                <LanyardDesigner
+                  design={schedule.lanyard}
+                  update={updateDesign}
+                  schedule={schedule}
+                  output={output}
+                  logoImg={logoImg}
+                  selectedEntrant={selected}
+                />
+              )}
             </div>
           </div>
         </>

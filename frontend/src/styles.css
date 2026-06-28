@@ -664,3 +664,100 @@ select option {
 .lanyard-list .btn.active {
   border-color: var(--accent);
 }
+
+/* Lanyard designer */
+.lanyard-designer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lanyard-design-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.side-tabs,
+.design-add {
+  display: inline-flex;
+  gap: 6px;
+}
+.design-bg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.lanyard-design-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.lanyard-stage {
+  position: relative;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  touch-action: none;
+  background: #000;
+}
+.el-box {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  cursor: move;
+}
+.el-box:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.el-box.selected {
+  border-color: var(--accent);
+}
+.el-handle {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  border: 1px solid #fff;
+  border-radius: 2px;
+  cursor: nwse-resize;
+}
+.lanyard-props {
+  flex: 0 0 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.card-size,
+.prop-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.card-size label,
+.prop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.prop-row input[type="text"],
+.prop-row select {
+  flex: 1;
+  min-width: 0;
+}
+.prop-actions {
+  display: flex;
+  gap: 6px;
+}

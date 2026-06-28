@@ -1,12 +1,16 @@
-// Batch-render one personalized schedule image per entrant and bundle them into
-// a single zip, entirely client-side (keeps the load off the single backend
-// machine and reuses the already-loaded fonts + Twitch icon).
+// Batch-render the designed front/back lanyard for every entrant and bundle them
+// into a single zip, entirely client-side (keeps load off the backend machine and
+// reuses the already-loaded fonts + Twitch icon).
 import { zip } from "fflate";
-import { renderSchedule } from "./render";
-import type { Entrant, OutputSettings, Schedule } from "./types";
+import { sidePixels } from "../../shared/lanyard.js";
+import {
+  preloadImages,
+  renderEntrantSchedule,
+  renderLanyardSide,
+} from "./lanyard-render";
+import type { Entrant, LanyardDesign, OutputSettings, Schedule } from "./types";
 
 // Resolve an aspect mode + custom W/H into a numeric ratio (or null for "fit").
-// Mirrors the helper in Preview.tsx.
 function resolveRatio(output: OutputSettings): number | null {
   const { mode, w, h } = output;
   if (mode === "fit") return null;
@@ -19,7 +23,12 @@ function resolveRatio(output: OutputSettings): number | null {
 }
 
 function safeName(s: string): string {
-  return (s || "entrant").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "entrant";
+  return (
+    (s || "entrant")
+      .replace(/[^a-z0-9]+/gi, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase() || "entrant"
+  );
 }
 
 function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
@@ -42,44 +51,75 @@ function triggerDownload(blob: Blob, filename: string): void {
 
 export interface GenerateOpts {
   schedule: Schedule;
+  design: LanyardDesign;
   output: OutputSettings;
   logoImg: HTMLImageElement | null;
   entrants: Entrant[];
   onProgress?: (done: number, total: number) => void;
 }
 
-// Render every entrant's image, zip (stored — PNGs are already compressed), and
-// download a single archive.
+// Render each entrant's designed front (+ back when non-empty), zip (stored —
+// PNGs are already compressed), and download a single archive.
 export async function generateLanyardsZip(opts: GenerateOpts): Promise<void> {
-  const { schedule, output, logoImg, entrants, onProgress } = opts;
+  const { schedule, design, output, logoImg, entrants, onProgress } = opts;
   const ratio = resolveRatio(output);
-  const canvas = document.createElement("canvas");
+  const { w: sideW, h: sideH } = sidePixels(design);
+  const hasBack = design.back.elements.length > 0;
+
+  const srcs = [...design.front.elements, ...design.back.elements]
+    .filter((e) => e.type === "image" && e.src)
+    .map((e) => e.src as string);
+  const images = await preloadImages(srcs);
+
+  const front = document.createElement("canvas");
+  front.width = sideW;
+  front.height = sideH;
+  const back = document.createElement("canvas");
+  back.width = sideW;
+  back.height = sideH;
+  const fctx = front.getContext("2d");
+  const bctx = back.getContext("2d");
+  if (!fctx || !bctx) throw new Error("2d context unavailable");
+
   const files: Record<string, Uint8Array> = {};
   const usedNames = new Set<string>();
 
   for (let i = 0; i < entrants.length; i++) {
     const entrant = entrants[i];
-    renderSchedule(canvas, schedule, output.scale, ratio, logoImg, {
-      highlightEventIds: new Set(entrant.eventIds),
-      subtitle: entrant.gamerTag,
-    });
-    // Dedupe filenames (gamerTags can repeat) by appending the participant id.
+    const scheduleImg = renderEntrantSchedule(
+      schedule,
+      output.scale,
+      ratio,
+      logoImg,
+      entrant.eventIds,
+    );
+    const assets = { scheduleImg, tag: entrant.gamerTag, images };
+
     let base = safeName(entrant.gamerTag);
     if (usedNames.has(base)) base = `${base}-${entrant.id}`;
     usedNames.add(base);
-    files[`${base}.png`] = await canvasToPngBytes(canvas);
+
+    fctx.setTransform(1, 0, 0, 1, 0, 0);
+    renderLanyardSide(fctx, design.front, sideW, sideH, assets);
+    files[`${base}-front.png`] = await canvasToPngBytes(front);
+
+    if (hasBack) {
+      bctx.setTransform(1, 0, 0, 1, 0, 0);
+      renderLanyardSide(bctx, design.back, sideW, sideH, assets);
+      files[`${base}-back.png`] = await canvasToPngBytes(back);
+    }
+
     onProgress?.(i + 1, entrants.length);
-    // Yield to the event loop so the progress UI can paint.
-    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0)); // yield so progress can paint
   }
 
   const zipped = await new Promise<Uint8Array>((resolve, reject) => {
-    zip(files, { level: 0 }, (err, data) =>
-      err ? reject(err) : resolve(data),
-    );
+    zip(files, { level: 0 }, (err, data) => (err ? reject(err) : resolve(data)));
   });
 
-  const title = safeName(schedule.title);
   const part = zipped as unknown as BlobPart;
-  triggerDownload(new Blob([part], { type: "application/zip" }), `lanyards-${title}.zip`);
+  triggerDownload(
+    new Blob([part], { type: "application/zip" }),
+    `lanyards-${safeName(schedule.title)}.zip`,
+  );
 }
