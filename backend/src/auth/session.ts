@@ -20,6 +20,7 @@ export interface AppEnv {
   Variables: {
     user?: SessionUser;
     sessionId?: string;
+    scheduleId?: string;
   };
 }
 
@@ -109,5 +110,19 @@ export const loadUser: MiddlewareHandler<AppEnv> = async (c, next) => {
 // Reject unauthenticated requests.
 export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (!c.get("user")) return c.json({ error: "unauthorized" }, 401);
+  await next();
+};
+
+// Reject requests for a schedule the current user doesn't own. Must run after
+// requireAuth. Stashes the verified id in c.get("scheduleId"). Mount on both
+// "/schedules/:id" and "/schedules/:id/*".
+export const requireScheduleOwner: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const id = c.req.param("id");
+  if (!id) return c.json({ error: "not found" }, 404);
+  const owned = db
+    .prepare("SELECT id FROM schedules WHERE id = ? AND user_id = ?")
+    .get(id, c.get("user")!.id);
+  if (!owned) return c.json({ error: "not found" }, 404);
+  c.set("scheduleId", id);
   await next();
 };
