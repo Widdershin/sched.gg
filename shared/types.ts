@@ -51,7 +51,13 @@ export interface StartggBinding {
 
 // --- Lanyard designer --------------------------------------------------------
 
-export type LanyardElementType = "image" | "text" | "tag" | "schedule" | "shape";
+export type LanyardElementType =
+  | "image"
+  | "text"
+  | "tag"
+  | "schedule"
+  | "shape"
+  | "roleImage";
 
 // A placeable element on one side of a lanyard. Positions/sizes are fractions of
 // the side (0..1) so they're resolution-independent. `tag` and `schedule` are
@@ -87,6 +93,8 @@ export interface LanyardDesign {
   dpi: number;
   front: LanyardSide;
   back: LanyardSide;
+  // role name → downscaled image data URL, shared across all roleImage elements.
+  roleImages?: Record<string, string>;
 }
 
 export interface Schedule {
@@ -95,6 +103,7 @@ export interface Schedule {
   logo?: Logo | null;
   startgg?: StartggBinding | null;
   lanyard?: LanyardDesign | null;
+  roles?: string[]; // player role types (defaults to ["Competitor"])
 }
 
 // A tournament entrant (start.gg participant) and the events they're in.
@@ -103,6 +112,7 @@ export interface Entrant {
   id: string; // start.gg participant id
   gamerTag: string;
   eventIds: string[];
+  role: string; // assigned role (defaults to "Competitor")
 }
 
 export type AspectMode =

@@ -69,9 +69,12 @@ export async function generateLanyardsZip(opts: GenerateOpts): Promise<void> {
   const { w: sideW, h: sideH } = sidePixels(design);
   const hasBack = design.back.elements.length > 0;
 
-  const srcs = [...design.front.elements, ...design.back.elements]
-    .filter((e) => e.type === "image" && e.src)
-    .map((e) => e.src as string);
+  const srcs = [
+    ...[...design.front.elements, ...design.back.elements]
+      .filter((e) => e.type === "image" && e.src)
+      .map((e) => e.src as string),
+    ...Object.values(design.roleImages ?? {}),
+  ];
   const images = await preloadImages(srcs);
 
   const front = document.createElement("canvas");
@@ -96,7 +99,13 @@ export async function generateLanyardsZip(opts: GenerateOpts): Promise<void> {
       logoImg,
       entrant.eventIds,
     );
-    const assets = { scheduleImg, tag: entrant.gamerTag, images };
+    const assets = {
+      scheduleImg,
+      tag: entrant.gamerTag,
+      role: entrant.role,
+      roleImages: design.roleImages ?? {},
+      images,
+    };
 
     let base = safeName(entrant.gamerTag);
     if (usedNames.has(base)) base = `${base}-${entrant.id}`;

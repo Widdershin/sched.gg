@@ -787,3 +787,67 @@ select option {
   height: 1px;
   transform: translateY(-0.5px);
 }
+
+/* Roles panel + per-entrant role assignment */
+.roles-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.roles-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.role-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.role-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.role-img {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.btn.small {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+.role-add {
+  display: flex;
+  gap: 6px;
+}
+.entrant-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.entrant-pick {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  justify-content: flex-start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.role-select {
+  flex: 0 0 auto;
+  max-width: 110px;
+}

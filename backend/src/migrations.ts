@@ -114,6 +114,10 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX idx_entrants_schedule ON schedule_entrants(schedule_id);
     `,
   },
+  {
+    version: 6,
+    sql: `ALTER TABLE schedule_entrants ADD COLUMN role TEXT NOT NULL DEFAULT 'Competitor';`,
+  },
 ];
 
 function migrateExistingLogos(db: DatabaseSync): void {

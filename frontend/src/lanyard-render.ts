@@ -10,6 +10,10 @@ export interface SideAssets {
   scheduleImg: HTMLCanvasElement | HTMLImageElement | null;
   // The player tag text used for `tag` elements.
   tag: string;
+  // The player's role, used to pick the roleImage source.
+  role: string;
+  // role name → data URL, shared across roleImage elements.
+  roleImages: Record<string, string>;
   // Preloaded images keyed by their data URL src.
   images: Map<string, HTMLImageElement>;
 }
@@ -57,6 +61,12 @@ export function renderLanyardSide(
       ctx.drawImage(img, r.x, r.y, r.w, r.h);
     } else if (el.type === "schedule") {
       const img = assets.scheduleImg;
+      if (!img) continue;
+      const r = elementRect(el, sideW, sideH, { aspect: imgAspect(img) });
+      ctx.drawImage(img, r.x, r.y, r.w, r.h);
+    } else if (el.type === "roleImage") {
+      const src = assets.roleImages[assets.role];
+      const img = src ? assets.images.get(src) : undefined;
       if (!img) continue;
       const r = elementRect(el, sideW, sideH, { aspect: imgAspect(img) });
       ctx.drawImage(img, r.x, r.y, r.w, r.h);

@@ -70,11 +70,14 @@ export async function fetchTournamentEvents(
 
 const PER_PAGE = 64;
 
+// start.gg participants carry no role — the role is assigned/persisted locally.
+export type FetchedParticipant = Omit<Entrant, "role">;
+
 export async function fetchTournamentParticipants(
   accessToken: string,
   slug: string,
-): Promise<Entrant[]> {
-  const out: Entrant[] = [];
+): Promise<FetchedParticipant[]> {
+  const out: FetchedParticipant[] = [];
   let page = 1;
   let totalPages = 1;
   do {

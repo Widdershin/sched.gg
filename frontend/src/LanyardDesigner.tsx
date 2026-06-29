@@ -93,6 +93,8 @@ export default function LanyardDesigner({
   const aspect = design.widthMm / design.heightMm;
   const stageW = STAGE_H * aspect;
   const tag = selectedEntrant?.gamerTag ?? "";
+  const role = selectedEntrant?.role ?? "Competitor";
+  const roleImages = design.roleImages ?? {};
 
   // The entrant's (or default) personalized schedule, rendered once.
   const scheduleImg = useMemo(
@@ -107,11 +109,14 @@ export default function LanyardDesigner({
     [schedule, output, logoImg, selectedEntrant, assetTick],
   );
 
-  // Preload image data URLs used on the current side.
+  // Preload image data URLs used on the current side (incl. role badges).
   useEffect(() => {
-    const srcs = currentSide.elements
-      .filter((e) => e.type === "image" && e.src)
-      .map((e) => e.src as string);
+    const srcs = [
+      ...currentSide.elements
+        .filter((e) => e.type === "image" && e.src)
+        .map((e) => e.src as string),
+      ...Object.values(roleImages),
+    ];
     let cancelled = false;
     (async () => {
       const map = new Map<string, HTMLImageElement>();
@@ -132,7 +137,10 @@ export default function LanyardDesigner({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(currentSide.elements.map((e) => e.src ?? ""))]);
+  }, [
+    JSON.stringify(currentSide.elements.map((e) => e.src ?? "")),
+    JSON.stringify(roleImages),
+  ]);
 
   // Draw the stage canvas.
   useEffect(() => {
@@ -147,9 +155,22 @@ export default function LanyardDesigner({
     renderLanyardSide(ctx, currentSide, stageW, STAGE_H, {
       scheduleImg,
       tag,
+      role,
+      roleImages,
       images,
     });
-  }, [currentSide, design, scheduleImg, images, tag, stageW, side, assetTick]);
+  }, [
+    currentSide,
+    design,
+    scheduleImg,
+    images,
+    tag,
+    role,
+    roleImages,
+    stageW,
+    side,
+    assetTick,
+  ]);
 
   // --- element helpers -------------------------------------------------------
   const updateEl = (id: string, fn: (el: LanyardElement) => void) =>
@@ -198,6 +219,10 @@ export default function LanyardDesigner({
       const img = images.get(el.src);
       return img ? img.naturalWidth / img.naturalHeight : 1;
     }
+    if (el.type === "roleImage") {
+      const img = images.get(roleImages[role]);
+      return img ? img.naturalWidth / img.naturalHeight : 1;
+    }
     if (el.type === "schedule") {
       return scheduleImg.width / scheduleImg.height || 1;
     }
@@ -211,7 +236,11 @@ export default function LanyardDesigner({
     sideWpx: number,
     sideHpx: number,
   ): ElementRectOpts => {
-    if (el.type === "image" || el.type === "schedule") {
+    if (
+      el.type === "image" ||
+      el.type === "schedule" ||
+      el.type === "roleImage"
+    ) {
       return { aspect: elAspect(el) };
     }
     if ((el.type === "text" || el.type === "tag") && measureCtx) {
@@ -324,6 +353,9 @@ export default function LanyardDesigner({
           </button>
           <button className="btn ghost" onClick={() => addEl("schedule")}>
             + Schedule
+          </button>
+          <button className="btn ghost" onClick={() => addEl("roleImage")}>
+            + Role image
           </button>
           <button className="btn ghost" onClick={() => addEl("shape")}>
             + Shape
@@ -496,7 +528,11 @@ function ElementProps({
   return (
     <div className="prop-panel">
       <span className="section-label">
-        {el.type === "tag" ? "Player tag" : el.type}
+        {el.type === "tag"
+          ? "Player tag"
+          : el.type === "roleImage"
+            ? "Role image"
+            : el.type}
       </span>
 
       {slider("Width", el.w, 0.05, 1, 0.01, (v) =>
@@ -598,6 +634,13 @@ function ElementProps({
       {el.type === "schedule" && (
         <p className="startgg-hint">
           Shows each entrant's highlighted schedule.
+        </p>
+      )}
+
+      {el.type === "roleImage" && (
+        <p className="startgg-hint">
+          Shows the image for each player's role. Upload images per role in the
+          Roles panel.
         </p>
       )}
 

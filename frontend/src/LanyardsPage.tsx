@@ -4,7 +4,10 @@ import { useAuth } from "./AuthContext";
 import { generateLanyardsZip } from "./lanyards";
 import LanyardDesigner from "./LanyardDesigner";
 import { defaultDesign } from "../../shared/lanyard.js";
+import { fileToImageDataUrl } from "./images";
 import type { Entrant, LanyardDesign, OutputSettings, Schedule } from "./types";
+
+const DEFAULT_ROLE = "Competitor";
 
 const DEFAULT_OUTPUT: OutputSettings = { mode: "fit", w: 16, h: 9, scale: 2 };
 const SAVE_DEBOUNCE_MS = 800;
@@ -66,6 +69,7 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
           }
         }
         if (!data.lanyard) data.lanyard = defaultDesign();
+        if (!data.roles || data.roles.length === 0) data.roles = [DEFAULT_ROLE];
         setSchedule(data);
         loadedScheduleRef.current = true;
         const res = await api.getEntrants(scheduleId);
@@ -175,6 +179,60 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
     runGenerate([selected], `lanyard-${name}`);
   };
 
+  // --- Roles -----------------------------------------------------------------
+  const roles = schedule?.roles ?? [DEFAULT_ROLE];
+
+  const assignRole = (pid: string, role: string) => {
+    if (!scheduleId) return;
+    setEntrants((prev) =>
+      prev.map((e) => (e.id === pid ? { ...e, role } : e)),
+    );
+    api.setEntrantRole(scheduleId, pid, role).catch((e) => {
+      setActionError(e instanceof Error ? e.message : String(e));
+    });
+  };
+
+  const addRole = (name: string) => {
+    const r = name.trim();
+    if (!r || roles.includes(r)) return;
+    update((s) => {
+      s.roles = [...(s.roles ?? [DEFAULT_ROLE]), r];
+    });
+  };
+
+  const deleteRole = (name: string) => {
+    if (name === DEFAULT_ROLE || !scheduleId) return;
+    update((s) => {
+      s.roles = (s.roles ?? [DEFAULT_ROLE]).filter((r) => r !== name);
+      if (s.lanyard?.roleImages) delete s.lanyard.roleImages[name];
+    });
+    setEntrants((prev) =>
+      prev.map((e) => (e.role === name ? { ...e, role: DEFAULT_ROLE } : e)),
+    );
+    api.reassignRole(scheduleId, name, DEFAULT_ROLE).catch((e) => {
+      setActionError(e instanceof Error ? e.message : String(e));
+    });
+  };
+
+  const setRoleImage = async (name: string, file: File | undefined) => {
+    if (!file) return;
+    try {
+      const src = await fileToImageDataUrl(file);
+      update((s) => {
+        if (s.lanyard) {
+          s.lanyard.roleImages = { ...(s.lanyard.roleImages ?? {}), [name]: src };
+        }
+      });
+    } catch {
+      setActionError("Could not load that image.");
+    }
+  };
+
+  const clearRoleImage = (name: string) =>
+    update((s) => {
+      if (s.lanyard?.roleImages) delete s.lanyard.roleImages[name];
+    });
+
   // --- Gating states ---------------------------------------------------------
   if (auth.loading || !loaded) {
     return <Shell><p className="empty">Loading…</p></Shell>;
@@ -252,25 +310,44 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
           {actionError && <p className="warn">{actionError}</p>}
 
           <div className="lanyard-body" style={{ display: "flex", gap: 16 }}>
-            <div className="lanyard-list" style={{ flex: "0 0 240px" }}>
+            <div className="lanyard-list" style={{ flex: "0 0 260px" }}>
+              <RolesPanel
+                roles={roles}
+                roleImages={schedule?.lanyard?.roleImages ?? {}}
+                onAdd={addRole}
+                onDelete={deleteRole}
+                onUpload={setRoleImage}
+                onClear={clearRoleImage}
+              />
               <input
                 className="startgg-slug"
-                style={{ width: "100%", marginBottom: 8 }}
+                style={{ width: "100%", margin: "8px 0" }}
                 placeholder="Search entrants…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              <ul style={{ listStyle: "none", margin: 0, padding: 0, maxHeight: "70vh", overflow: "auto" }}>
+              <ul style={{ listStyle: "none", margin: 0, padding: 0, maxHeight: "60vh", overflow: "auto" }}>
                 {filtered.map((e) => (
-                  <li key={e.id}>
+                  <li key={e.id} className="entrant-row">
                     <button
-                      className={`btn ghost${e.id === selectedId ? " active" : ""}`}
-                      style={{ width: "100%", textAlign: "left", justifyContent: "flex-start" }}
+                      className={`btn ghost entrant-pick${e.id === selectedId ? " active" : ""}`}
                       onClick={() => setSelectedId(e.id)}
                     >
                       {e.gamerTag || "(no tag)"}{" "}
                       <span className="startgg-hint">· {e.eventIds.length}</span>
                     </button>
+                    <select
+                      className="role-select"
+                      value={roles.includes(e.role) ? e.role : DEFAULT_ROLE}
+                      onChange={(ev) => assignRole(e.id, ev.target.value)}
+                      title="Player role"
+                    >
+                      {roles.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
                   </li>
                 ))}
                 {filtered.length === 0 && <li className="empty">No entrants.</li>}
@@ -292,6 +369,102 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
         </>
       )}
     </Shell>
+  );
+}
+
+function RolesPanel({
+  roles,
+  roleImages,
+  onAdd,
+  onDelete,
+  onUpload,
+  onClear,
+}: {
+  roles: string[];
+  roleImages: Record<string, string>;
+  onAdd: (name: string) => void;
+  onDelete: (name: string) => void;
+  onUpload: (name: string, file: File | undefined) => void;
+  onClear: (name: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const add = () => {
+    onAdd(name);
+    setName("");
+  };
+  return (
+    <div className="roles-panel">
+      <span className="section-label">Roles</span>
+      <ul className="roles-list">
+        {roles.map((r) => (
+          <li key={r} className="role-row">
+            <span className="role-name">{r}</span>
+            <RoleImageButton
+              has={!!roleImages[r]}
+              onUpload={(f) => onUpload(r, f)}
+              onClear={() => onClear(r)}
+            />
+            {r !== DEFAULT_ROLE && (
+              <button
+                className="btn icon"
+                title="Delete role"
+                onClick={() => onDelete(r)}
+              >
+                ✕
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <div className="role-add">
+        <input
+          className="startgg-slug"
+          placeholder="New role…"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") add();
+          }}
+        />
+        <button className="btn ghost" onClick={add} disabled={!name.trim()}>
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RoleImageButton({
+  has,
+  onUpload,
+  onClear,
+}: {
+  has: boolean;
+  onUpload: (file: File | undefined) => void;
+  onClear: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <span className="role-img">
+      <button className="btn ghost small" onClick={() => ref.current?.click()}>
+        {has ? "Image ✓" : "Image"}
+      </button>
+      {has && (
+        <button className="btn icon" title="Remove image" onClick={onClear}>
+          ⌫
+        </button>
+      )}
+      <input
+        ref={ref}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          onUpload(e.target.files?.[0]);
+          e.target.value = "";
+        }}
+      />
+    </span>
   );
 }
 

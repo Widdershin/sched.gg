@@ -114,6 +114,18 @@ export const api = {
       "POST",
       `/schedules/${scheduleId}/entrants/sync`,
     ),
+  setEntrantRole: (scheduleId: string, pid: string, role: string) =>
+    request<{ ok: true }>(
+      "PUT",
+      `/schedules/${scheduleId}/entrants/${encodeURIComponent(pid)}/role`,
+      { role },
+    ),
+  reassignRole: (scheduleId: string, from: string, to: string) =>
+    request<{ ok: true }>(
+      "POST",
+      `/schedules/${scheduleId}/entrants/reassign-role`,
+      { from, to },
+    ),
 
   // Logo endpoints (binary, not JSON).
   uploadLogo: async (id: string, blob: Blob) => {

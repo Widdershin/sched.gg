@@ -8,6 +8,7 @@ import { getStartggAccessToken } from "../auth/startgg-token.js";
 import {
   fetchTournamentParticipants,
   StartggApiError,
+  type FetchedParticipant,
 } from "../startgg/tournament.js";
 import type { Schedule, OutputSettings, Entrant } from "../../../shared/types.js";
 
@@ -240,12 +241,13 @@ interface EntrantRow {
   participant_id: string;
   gamer_tag: string | null;
   event_ids: string;
+  role: string | null;
 }
 
 function readEntrants(scheduleId: string): Entrant[] {
   const rows = db
     .prepare(
-      `SELECT participant_id, gamer_tag, event_ids FROM schedule_entrants
+      `SELECT participant_id, gamer_tag, event_ids, role FROM schedule_entrants
         WHERE schedule_id = ? ORDER BY gamer_tag COLLATE NOCASE`,
     )
     .all(scheduleId) as unknown as EntrantRow[];
@@ -253,6 +255,7 @@ function readEntrants(scheduleId: string): Entrant[] {
     id: r.participant_id,
     gamerTag: r.gamer_tag ?? "",
     eventIds: JSON.parse(r.event_ids) as string[],
+    role: r.role ?? "Competitor",
   }));
 }
 
@@ -286,7 +289,7 @@ schedules.post("/schedules/:id/entrants/sync", requireCsrf, async (c) => {
   const accessToken = await getStartggAccessToken(userId(c));
   if (!accessToken) return c.json({ error: "start.gg account not linked" }, 409);
 
-  let entrants: Entrant[];
+  let entrants: FetchedParticipant[];
   try {
     entrants = await fetchTournamentParticipants(accessToken, slug);
   } catch (err) {
@@ -297,17 +300,36 @@ schedules.post("/schedules/:id/entrants/sync", requireCsrf, async (c) => {
     return c.json({ error: "start.gg query failed" }, 502);
   }
 
+  // Preserve role assignments across the full replace.
+  const priorRoles = new Map(
+    (
+      db
+        .prepare(
+          "SELECT participant_id, role FROM schedule_entrants WHERE schedule_id = ?",
+        )
+        .all(id) as unknown as { participant_id: string; role: string | null }[]
+    ).map((r) => [r.participant_id, r.role ?? "Competitor"]),
+  );
+
   const now = Date.now();
   db.exec("BEGIN");
   try {
     db.prepare("DELETE FROM schedule_entrants WHERE schedule_id = ?").run(id);
     const insert = db.prepare(
       `INSERT INTO schedule_entrants
-         (id, schedule_id, participant_id, gamer_tag, event_ids, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+         (id, schedule_id, participant_id, gamer_tag, event_ids, role, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const e of entrants) {
-      insert.run(uuid(), id, e.id, e.gamerTag, JSON.stringify(e.eventIds), now);
+      insert.run(
+        uuid(),
+        id,
+        e.id,
+        e.gamerTag,
+        JSON.stringify(e.eventIds),
+        priorRoles.get(e.id) ?? "Competitor",
+        now,
+      );
     }
     db.prepare("UPDATE schedules SET entrants_synced_at = ? WHERE id = ?").run(
       now,
@@ -320,6 +342,47 @@ schedules.post("/schedules/:id/entrants/sync", requireCsrf, async (c) => {
   }
 
   return c.json({ entrants: readEntrants(id), syncedAt: now });
+});
+
+// Assign a role to a single entrant.
+schedules.put("/schedules/:id/entrants/:pid/role", requireCsrf, async (c) => {
+  const id = c.req.param("id");
+  const pid = c.req.param("pid");
+  const owned = db
+    .prepare("SELECT id FROM schedules WHERE id = ? AND user_id = ?")
+    .get(id, userId(c));
+  if (!owned) return c.json({ error: "not found" }, 404);
+
+  const body = (await c.req.json().catch(() => ({}))) as { role?: string };
+  const role = (body.role || "Competitor").toString().slice(0, 100);
+  const res = db
+    .prepare(
+      "UPDATE schedule_entrants SET role = ?, updated_at = ? WHERE schedule_id = ? AND participant_id = ?",
+    )
+    .run(role, Date.now(), id, pid);
+  if (res.changes === 0) return c.json({ error: "entrant not found" }, 404);
+  return c.json({ ok: true });
+});
+
+// Bulk reassign all entrants of one role to another (used when deleting a role).
+schedules.post("/schedules/:id/entrants/reassign-role", requireCsrf, async (c) => {
+  const id = c.req.param("id");
+  const owned = db
+    .prepare("SELECT id FROM schedules WHERE id = ? AND user_id = ?")
+    .get(id, userId(c));
+  if (!owned) return c.json({ error: "not found" }, 404);
+
+  const body = (await c.req.json().catch(() => ({}))) as {
+    from?: string;
+    to?: string;
+  };
+  const from = (body.from || "").toString();
+  const to = (body.to || "Competitor").toString().slice(0, 100);
+  if (!from) return c.json({ error: "missing from" }, 400);
+  db.prepare(
+    "UPDATE schedule_entrants SET role = ?, updated_at = ? WHERE schedule_id = ? AND role = ?",
+  ).run(to, Date.now(), id, from);
+  return c.json({ ok: true });
 });
 
 export default schedules;

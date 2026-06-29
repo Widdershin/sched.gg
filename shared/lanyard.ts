@@ -10,6 +10,8 @@ import type {
 
 const CARD_BG = "#0e1220";
 
+export const DEFAULT_ROLE = "Competitor";
+
 export function mmToPx(mm: number, dpi: number): number {
   return Math.round((mm * dpi) / 25.4);
 }
@@ -49,7 +51,7 @@ export function elementRect(
   const y = el.y * sideH;
   const w = el.w * sideW;
 
-  if (el.type === "image" || el.type === "schedule") {
+  if (el.type === "image" || el.type === "schedule" || el.type === "roleImage") {
     const aspect = opts.aspect && opts.aspect > 0 ? opts.aspect : 1;
     return { x, y, w, h: w / aspect, fontPx: 0 };
   }
@@ -99,6 +101,9 @@ export function makeElement(
       break;
     case "image":
       Object.assign(base, { w: 0.4 });
+      break;
+    case "roleImage":
+      Object.assign(base, { w: 0.25 });
       break;
   }
   return { ...base, ...partial };
