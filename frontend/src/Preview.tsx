@@ -126,7 +126,7 @@ export default function Preview({ schedule, update, output, setOutput, visuals, 
       }
     }, RENDER_DEBOUNCE_MS);
     return () => clearTimeout(id);
-  }, [schedule, output, logoImg, assetTick]);
+  }, [schedule, output, logoImg, assetTick, visuals]);
 
   const download = () => {
     const canvas = canvasRef.current;
