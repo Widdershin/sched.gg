@@ -261,12 +261,12 @@ function drawBlock(
     ctx.globalAlpha = 0.7;
   }
 
-  ctx.fillStyle = hexToRgba(accent, THEME.blockFillAlpha);
-  roundRect(ctx, x, y, w, h, LAYOUT.blockRadius);
+  ctx.fillStyle = hexToRgba(accent, theme.blockFillAlpha);
+  roundRect(ctx, x, y, w, h, layout.blockRadius);
   ctx.fill();
-  ctx.strokeStyle = hexToRgba(accent, THEME.blockStrokeAlpha);
-  ctx.lineWidth = LAYOUT.blockBorderWidth;
-  roundRect(ctx, x, y, w, h, LAYOUT.blockRadius);
+  ctx.strokeStyle = hexToRgba(accent, theme.blockStrokeAlpha);
+  ctx.lineWidth = layout.blockBorderWidth;
+  roundRect(ctx, x, y, w, h, layout.blockRadius);
   ctx.stroke();
 
   // Emphasis pass for an entrant's own events: a brighter, thicker glowing
@@ -277,7 +277,7 @@ function drawBlock(
     ctx.shadowBlur = 14;
     ctx.strokeStyle = hexToRgba(accent, 1);
     ctx.lineWidth = 3;
-    roundRect(ctx, x, y, w, h, LAYOUT.blockRadius);
+    roundRect(ctx, x, y, w, h, layout.blockRadius);
     ctx.stroke();
     ctx.restore();
   }
@@ -290,7 +290,7 @@ function drawBlock(
   }
 
   const lineH = 19;
-  ctx.font = `700 16px ${THEME.font}`;
+  ctx.font = `700 16px ${theme.font}`;
   const nLines = wrapText(ctx, block.name || "", innerW, 2);
   const start = parseTime(block.start);
   const end = parseTime(block.end);
@@ -301,15 +301,15 @@ function drawBlock(
   const textX = opts.center ? x + w / 2 : innerX;
   ctx.textAlign = opts.center ? "center" : "left";
 
-  ctx.fillStyle = THEME.text;
+  ctx.fillStyle = theme.text;
   for (const line of nLines) {
     ctx.fillText(line, textX, textY);
     textY += lineH;
   }
 
   if (hasTime) {
-    ctx.fillStyle = THEME.muted;
-    ctx.font = `500 12px ${THEME.font}`;
+    ctx.fillStyle = theme.muted;
+    ctx.font = `500 12px ${theme.font}`;
     let timeText = `${formatTime(start, { compact: true })}–${formatTime(end, {
       compact: true,
     })}`;
@@ -322,7 +322,7 @@ function drawBlock(
 
   const streams = [block.stream, block.stream2].filter(Boolean);
   if (streams.length) {
-    ctx.font = `600 12px ${THEME.font}`;
+    ctx.font = `600 12px ${theme.font}`;
     const badgeH = 22;
     const icon = 14;
     const padL = 8;
@@ -339,7 +339,7 @@ function drawBlock(
         const label = ellipsize(ctx, text, avail);
         const labelW = ctx.measureText(label).width;
         const badgeW = padL + icon + gap + labelW + padR;
-        const fg = idx === 0 ? THEME.badgeTextColor : accent;
+        const fg = idx === 0 ? theme.badgeTextColor : accent;
         if (idx === 0) {
           ctx.fillStyle = accent;
           roundRect(ctx, lbx, lby, badgeW, badgeH, 11);
@@ -347,7 +347,7 @@ function drawBlock(
         } else {
           roundRect(ctx, lbx, lby, badgeW, badgeH, 11);
           ctx.strokeStyle = accent;
-          ctx.lineWidth = LAYOUT.blockBorderWidth;
+          ctx.lineWidth = layout.blockBorderWidth;
           ctx.stroke();
         }
         const glyph = twitchGlyph(ctx, fg, icon);
@@ -376,25 +376,25 @@ function drawDaySection(
   theme: ResolvedTheme = THEME,
   layout: ResolvedLayout = LAYOUT,
 ): void {
-  const gridLeft = x + LAYOUT.gutterW;
-  const headerTop = y + LAYOUT.subtitleH;
-  const lanesTop = headerTop + LAYOUT.timeHeaderH;
+  const gridLeft = x + layout.gutterW;
+  const headerTop = y + layout.subtitleH;
+  const lanesTop = headerTop + layout.timeHeaderH;
   const banners = day.banners ?? [];
   const laneCount = Math.max(day.lanes.length, 1);
   const lanesBottom =
-    lanesTop + laneCount * LAYOUT.laneH + (laneCount - 1) * LAYOUT.laneGap;
+    lanesTop + laneCount * layout.laneH + (laneCount - 1) * layout.laneGap;
   const minutesToX = (mins: number) =>
     gridLeft + (mins - section.min) * section.pxPerMin;
   const blockW = (start: number, end: number) =>
     Math.max((end - start) * section.pxPerMin, 30);
 
-  ctx.fillStyle = THEME.text;
+  ctx.fillStyle = theme.text;
   ctx.textAlign = "left";
-  ctx.font = `700 24px ${THEME.font}`;
+  ctx.font = `700 24px ${theme.font}`;
   ctx.fillText(day.name || "", x, y + 24);
 
-  ctx.font = `500 14px ${THEME.font}`;
-  const contentRight = canvasW - LAYOUT.pad;
+  ctx.font = `500 14px ${theme.font}`;
+  const contentRight = canvasW - layout.pad;
   const rightEdge = minutesToX(section.max);
   const ticks: number[] = [section.min];
   for (
@@ -408,8 +408,8 @@ function drawDaySection(
 
   ticks.forEach((t, idx) => {
     const gx = minutesToX(t);
-    ctx.strokeStyle = THEME.grid;
-    ctx.lineWidth = LAYOUT.gridLineWidth;
+    ctx.strokeStyle = theme.grid;
+    ctx.lineWidth = layout.gridLineWidth;
     ctx.beginPath();
     ctx.moveTo(gx, headerTop + 20);
     ctx.lineTo(gx, lanesBottom);
@@ -422,7 +422,7 @@ function drawDaySection(
       (rightEdge < contentRight - 1 &&
         gx + ctx.measureText(label).width <= canvasW);
     if (show) {
-      ctx.fillStyle = THEME.muted;
+      ctx.fillStyle = theme.muted;
       ctx.textAlign = "left";
       ctx.fillText(label, gx, headerTop + 14);
     }
@@ -450,9 +450,9 @@ function drawDaySection(
     ctx.clip("evenodd");
   }
   day.lanes.forEach((_, i) => {
-    const laneY = lanesTop + i * (LAYOUT.laneH + LAYOUT.laneGap);
-    ctx.fillStyle = hexToRgba(THEME.text, THEME.laneBgAlpha);
-    roundRect(ctx, gridLeft, laneY, section.trackW, LAYOUT.laneH, 8);
+    const laneY = lanesTop + i * (layout.laneH + layout.laneGap);
+    ctx.fillStyle = hexToRgba(theme.text, theme.laneBgAlpha);
+    roundRect(ctx, gridLeft, laneY, section.trackW, layout.laneH, 8);
     ctx.fill();
   });
   ctx.restore();
@@ -465,14 +465,16 @@ function drawDaySection(
       lanesTop + INSET,
       bw,
       lanesBottom - lanesTop - INSET * 2,
-      THEME.bannerColor,
+      theme.bannerColor,
       { center: true, hideEnd: true },
       twitchGlyph,
+      theme,
+      layout,
     );
   }
 
   day.lanes.forEach((lane, i) => {
-    const laneY = lanesTop + i * (LAYOUT.laneH + LAYOUT.laneGap);
+    const laneY = lanesTop + i * (layout.laneH + layout.laneGap);
     const accent = lane.color || "#3c8ce2";
     for (const block of lane.blocks) {
       const start = parseTime(block.start);
@@ -480,7 +482,6 @@ function drawDaySection(
       if (start == null || end == null || end <= start) continue;
       const highlighted =
         !!block.eventId && !!highlightEventIds?.has(block.eventId);
-      // In a personalized render, fade the events this entrant isn't in.
       const dimmed = highlightEventIds != null && !highlighted;
       drawBlock(
         ctx,
@@ -488,10 +489,12 @@ function drawDaySection(
         minutesToX(start),
         laneY + INSET,
         blockW(start, end),
-        LAYOUT.laneH - INSET * 2,
+        layout.laneH - INSET * 2,
         accent,
         { highlighted, dimmed },
         twitchGlyph,
+        theme,
+        layout,
       );
     }
   });
@@ -536,7 +539,7 @@ export function renderScheduleToContext(
   const theme = resolveTheme(visuals);
   const layout = resolveLayout(visuals);
 
-  ctx.fillStyle = THEME.bg;
+  ctx.fillStyle = theme.bg;
 
   ctx.fillRect(0, 0, W, H);
 
