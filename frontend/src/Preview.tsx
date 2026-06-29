@@ -299,6 +299,21 @@ export default function Preview({ schedule, update, output, setOutput, visuals, 
               unit="px"
               onChange={(v) => setVisuals((prev) => ({ ...prev, pad: v }))}
             />
+            <span className="scale-field">
+              Layout
+              <select
+                value={visuals.orientation ?? "horizontal"}
+                onChange={(e) =>
+                  setVisuals((prev) => ({
+                    ...prev,
+                    orientation: e.target.value as "horizontal" | "vertical",
+                  }))
+                }
+              >
+                <option value="horizontal">Horizontal</option>
+                <option value="vertical">Vertical</option>
+              </select>
+            </span>
           </>
         )}
         <label className="scale-field push-right">

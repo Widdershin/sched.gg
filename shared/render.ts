@@ -35,6 +35,7 @@ export const LAYOUT = {
   blockRadius: 10,
   blockBorderWidth: 1.5,
   gridLineWidth: 1.0,
+  orientation: "horizontal" as "horizontal" | "vertical",
 };
 
 export type ResolvedTheme = typeof THEME;
@@ -58,6 +59,7 @@ export interface Section {
   min: number;
   max: number;
   trackW: number;
+  trackH: number;
   pxPerMin: number;
 }
 
@@ -175,11 +177,21 @@ function measureDaySection(day: Day, hScale = 1, layout: ResolvedLayout = LAYOUT
   const { min, max } = dayTimeRange(day);
   const laneCount = Math.max(day.lanes.length, 1);
   const pxPerMin = layout.pxPerMin * hScale;
+  const isVertical = layout.orientation === "vertical";
+
+  if (isVertical) {
+    const trackH = Math.max((max - min) * pxPerMin, 60);
+    const laneAreaW = laneCount * layout.laneH + (laneCount - 1) * layout.laneGap;
+    const w = layout.pad * 2 + layout.gutterW + laneAreaW;
+    const h = layout.subtitleH + layout.timeHeaderH + trackH;
+    return { w, h, min, max, trackW: 0, trackH, pxPerMin };
+  }
+
   const trackW = (max - min) * pxPerMin;
   const w = layout.gutterW + trackW;
   const lanesH = laneCount * layout.laneH + (laneCount - 1) * layout.laneGap;
   const h = layout.subtitleH + layout.timeHeaderH + lanesH;
-  return { w, h, min, max, trackW, pxPerMin };
+  return { w, h, min, max, trackW, trackH: 0, pxPerMin };
 }
 
 export function measureSchedule(
@@ -219,7 +231,7 @@ export function measureSchedule(
     const lanesH = laneCount * layout.laneH + (laneCount - 1) * layout.laneGap;
     const h = layout.subtitleH + layout.timeHeaderH + lanesH;
 
-    return { w: targetW, h, min, max, trackW: targetTrackW, pxPerMin };
+    return { w: targetW, h, min, max, trackW: targetTrackW, trackH: 0, pxPerMin };
   });
 
   const contentW = sections.reduce((acc, s) => Math.max(acc, s.w), 0);
@@ -500,6 +512,166 @@ function drawDaySection(
   });
 }
 
+// --- Vertical-layout drawing variants -----------------------------------------
+
+function drawDaySectionVertical(
+  ctx: CanvasRenderingContext2D,
+  day: Day,
+  x: number,
+  y: number,
+  section: Section,
+  canvasW: number,
+  twitchGlyph: TwitchGlypher,
+  highlightEventIds: Set<string> | undefined,
+  theme: ResolvedTheme = THEME,
+  layout: ResolvedLayout = LAYOUT,
+): void {
+  const gridTop = y + layout.subtitleH + layout.timeHeaderH;
+  const lanesLeft = x + layout.pad;
+  const banners = day.banners ?? [];
+  const laneCount = Math.max(day.lanes.length, 1);
+  const lanesRight = lanesLeft + laneCount * layout.laneH + (laneCount - 1) * layout.laneGap;
+  const minutesToY = (mins: number) =>
+    gridTop + (mins - section.min) * section.pxPerMin;
+  const blockH = (start: number, end: number) =>
+    Math.max((end - start) * section.pxPerMin, 30);
+
+  // Day name (horizontal, at top)
+  ctx.fillStyle = theme.text;
+  ctx.textAlign = "left";
+  ctx.font = `700 24px ${theme.font}`;
+  ctx.fillText(day.name || "", x + layout.pad, y + 24);
+
+  // Time-axis labels (rotated along left column)
+  ctx.font = `500 12px ${theme.font}`;
+  const headerLeft = x + layout.pad;
+  const headerRight = headerLeft + layout.timeHeaderH - 8;
+  const ticks: number[] = [section.min];
+  for (let t = Math.ceil((section.min + 1) / 60) * 60; t < section.max; t += 60) {
+    ticks.push(t);
+  }
+  ticks.push(section.max);
+
+  ticks.forEach((t, idx) => {
+    const gy = minutesToY(t);
+    ctx.strokeStyle = theme.grid;
+    ctx.lineWidth = layout.gridLineWidth;
+    ctx.beginPath();
+    ctx.moveTo(headerRight, gy);
+    ctx.lineTo(lanesRight + layout.pad, gy);
+    ctx.stroke();
+
+    const isFinal = idx === ticks.length - 1;
+    const label = formatTime(t, { compact: true });
+    const show = !isFinal || gy + 12 <= minutesToY(section.max);
+    if (show) {
+      ctx.fillStyle = theme.muted;
+      ctx.textAlign = "right";
+      ctx.fillText(label, headerRight - 4, gy + 4);
+    }
+  });
+  ctx.textAlign = "left";
+
+  const INSET = 6;
+
+  // Lane columns
+  ctx.save();
+  day.lanes.forEach((_, i) => {
+    const laneX = lanesLeft + i * (layout.laneH + layout.laneGap);
+    ctx.fillStyle = hexToRgba(theme.text, theme.laneBgAlpha);
+    roundRect(ctx, laneX, gridTop, layout.laneH, section.trackH, 8);
+    ctx.fill();
+  });
+  ctx.restore();
+
+  // Lane blocks
+  day.lanes.forEach((lane, i) => {
+    const laneX = lanesLeft + i * (layout.laneH + layout.laneGap);
+    const accent = lane.color || "#3c8ce2";
+    for (const block of lane.blocks) {
+      const start = parseTime(block.start);
+      const end = parseTime(block.end);
+      if (start == null || end == null || end <= start) continue;
+      drawBlockVertical(
+        ctx,
+        block,
+        laneX + INSET,
+        minutesToY(start),
+        layout.laneH - INSET * 2,
+        blockH(start, end),
+        accent,
+        twitchGlyph,
+        theme,
+        layout,
+      );
+    }
+  });
+
+  // Banners
+  for (const block of banners) {
+    const start = parseTime(block.start);
+    const end = parseTime(block.end);
+    if (start == null || end == null || end <= start) continue;
+    const bh = blockH(start, end);
+    drawBlockVertical(
+      ctx,
+      block,
+      lanesLeft + INSET,
+      minutesToY(start),
+      lanesRight - lanesLeft - INSET * 2,
+      bh,
+      theme.bannerColor,
+      twitchGlyph,
+      theme,
+      layout,
+    );
+  }
+}
+
+function drawBlockVertical(
+  ctx: CanvasRenderingContext2D,
+  block: Block,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  accent: string,
+  twitchGlyph: TwitchGlypher,
+  theme: ResolvedTheme = THEME,
+  layout: ResolvedLayout = LAYOUT,
+): void {
+  ctx.fillStyle = hexToRgba(accent, theme.blockFillAlpha);
+  roundRect(ctx, x, y, w, h, layout.blockRadius);
+  ctx.fill();
+  ctx.strokeStyle = hexToRgba(accent, theme.blockStrokeAlpha);
+  ctx.lineWidth = layout.blockBorderWidth;
+  roundRect(ctx, x, y, w, h, layout.blockRadius);
+  ctx.stroke();
+
+  const innerX = x + 4;
+  const innerW = w - 8;
+  if (innerW < 16 || h < 20) return;
+
+  // Truncated block name (vertical layout blocks are narrow)
+  ctx.font = `600 11px ${theme.font}`;
+  ctx.fillStyle = theme.text;
+  ctx.textAlign = "left";
+  const name = ellipsize(ctx, block.name || "", innerW);
+  ctx.fillText(name, innerX, y + h / 2 + 4);
+  ctx.textAlign = "left";
+
+  // Time range at bottom
+  const start = parseTime(block.start);
+  const end = parseTime(block.end);
+  if (start != null && end != null && h > 40) {
+    ctx.font = `500 10px ${theme.font}`;
+    ctx.fillStyle = theme.muted;
+    ctx.textAlign = "left";
+    const timeText = `${formatTime(start, { compact: true })}`;
+    ctx.fillText(timeText, innerX, y + h - 6);
+  }
+}
+
 // --- Top-level render function ------------------------------------------------
 
 export interface RenderOpts {
@@ -567,10 +739,15 @@ export function renderScheduleToContext(
 
   const contentRight = W - layout.pad;
   let y = layout.pad + th;
+  const isVertical = layout.orientation === "vertical";
   schedule.days.forEach((day, i) => {
     const section = m.sections[i];
     const x = day.align === "right" ? contentRight - section.w : left;
-    drawDaySection(ctx, day, x, y, section, W, twitchGlyph, highlightEventIds, theme, layout);
+    if (isVertical) {
+      drawDaySectionVertical(ctx, day, x, y, section, W, twitchGlyph, highlightEventIds, theme, layout);
+    } else {
+      drawDaySection(ctx, day, x, y, section, W, twitchGlyph, highlightEventIds, theme, layout);
+    }
     y += section.h + layout.dayGap;
   });
 
