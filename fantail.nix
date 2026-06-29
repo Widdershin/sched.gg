@@ -4,45 +4,11 @@
     let
       pkgs = loader.pkgs;
 
-      # Shared helper: build an offline npm cache + node_modules from a project's
-      # package.json + package-lock.json only, so app-code edits never trigger a
-      # dependency reinstall. Returns { nodeModules, node }.
-      # Regenerate a hash when deps change with:
-      #   nix run nixpkgs#prefetch-npm-deps -- <project>/package-lock.json
-      mkNodeModules =
-        { name, packageJson, packageLock, hash, node }:
-        let
-          manifest = pkgs.runCommand "${name}-manifest" { } ''
-            mkdir -p $out
-            cp ${packageJson} $out/package.json
-            cp ${packageLock} $out/package-lock.json
-          '';
-          npmDeps = pkgs.fetchNpmDeps {
-            name = "${name}-npm-deps";
-            src = manifest;
-            inherit hash;
-          };
-        in
-        pkgs.stdenv.mkDerivation {
-          name = "${name}-node-modules";
-          src = manifest;
-          nativeBuildInputs = [ node pkgs.npmHooks.npmConfigHook ];
-          inherit npmDeps;
-          dontBuild = true;
-          installPhase = ''
-            mkdir -p $out
-            cp -r node_modules $out/node_modules
-          '';
-        };
+      # Offline node_modules (helper + per-project hashes) live in one shared file.
+      nodeModules = import ./nix/node-modules.nix { inherit pkgs; };
 
       # --- Frontend (React, esbuild → bundle.js + bundle.css) -----------------
-      frontendNodeModules = mkNodeModules {
-        name = "sched-gg-frontend";
-        packageJson = ./frontend/package.json;
-        packageLock = ./frontend/package-lock.json;
-        hash = "sha256-zSev67+8RiGZYedDT+BJWuaPIhCXTrNHcxi0OkxCpGA=";
-        node = pkgs.nodejs;
-      };
+      frontendNodeModules = nodeModules.frontend;
 
       frontend = pkgs.stdenv.mkDerivation {
         name = "sched-gg-frontend";
@@ -66,13 +32,7 @@
       };
 
       # --- Backend (TypeScript, esbuild → single dist/server.js) --------------
-      backendNodeModules = mkNodeModules {
-        name = "sched-gg-backend";
-        packageJson = ./backend/package.json;
-        packageLock = ./backend/package-lock.json;
-        hash = "sha256-KIm/O+y7Rrhpi6FBzN2f9rqvgAvscmA0kjrKRwV2yog=";
-        node = pkgs.nodejs_24;
-      };
+      backendNodeModules = nodeModules.backend;
 
       backend = pkgs.stdenv.mkDerivation {
         name = "sched-gg-backend";
