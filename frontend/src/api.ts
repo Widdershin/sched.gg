@@ -2,12 +2,14 @@
 // Uses cookie sessions (credentials: include) and double-submit CSRF.
 
 import type {
+  Entrant,
   FullSchedule,
   HealthInfo,
   OutputSettings,
   Schedule,
   ScheduleMeta,
   SharedSchedule,
+  StartggEvent,
   User,
 } from "./types";
 
@@ -66,7 +68,8 @@ export const api = {
   startggLoginUrl: (): string => `${BASE}/auth/startgg/login`,
 
   health: () => request<HealthInfo>("GET", "/health"),
-  me: () => request<{ user: User | null }>("GET", "/auth/me"),
+  me: () =>
+    request<{ user: User | null; startggLinked?: boolean }>("GET", "/auth/me"),
   register: (username: string, password: string) =>
     request<{ user: User }>("POST", "/auth/register", { username, password }),
   login: (username: string, password: string) =>
@@ -94,6 +97,35 @@ export const api = {
 
   getShared: (token: string) =>
     request<SharedSchedule>("GET", `/share/${token}`),
+
+  // start.gg tournament + entrants.
+  getTournament: (slug: string) =>
+    request<{ name: string; events: StartggEvent[] }>(
+      "GET",
+      `/startgg/tournament/${encodeURIComponent(slug)}`,
+    ),
+  getEntrants: (scheduleId: string) =>
+    request<{ entrants: Entrant[]; syncedAt: number | null }>(
+      "GET",
+      `/schedules/${scheduleId}/entrants`,
+    ),
+  syncEntrants: (scheduleId: string) =>
+    request<{ entrants: Entrant[]; syncedAt: number }>(
+      "POST",
+      `/schedules/${scheduleId}/entrants/sync`,
+    ),
+  setEntrantRole: (scheduleId: string, pid: string, role: string) =>
+    request<{ ok: true }>(
+      "PUT",
+      `/schedules/${scheduleId}/entrants/${encodeURIComponent(pid)}/role`,
+      { role },
+    ),
+  reassignRole: (scheduleId: string, from: string, to: string) =>
+    request<{ ok: true }>(
+      "POST",
+      `/schedules/${scheduleId}/entrants/reassign-role`,
+      { from, to },
+    ),
 
   // Logo endpoints (binary, not JSON).
   uploadLogo: async (id: string, blob: Blob) => {

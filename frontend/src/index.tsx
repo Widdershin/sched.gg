@@ -1,15 +1,29 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import ShareView from "./ShareView";
+import LanyardsPage from "./LanyardsPage";
 import { AuthProvider } from "./AuthContext";
 import "./styles.css";
 
-// `/?share=TOKEN` opens a read-only shared schedule (served by the existing
-// `get "/"` route, so no Fantail routing change is needed). Otherwise the full
-// editor, wrapped in the auth provider.
+// Client-side routing (Fantail serves index.html for every path via the
+// wildcard route):
+//   /?share=TOKEN     → read-only shared schedule
+//   /lanyards/<id>    → per-entrant lanyard generator
+//   otherwise         → the editor
 function Root() {
   const token = new URLSearchParams(window.location.search).get("share");
   if (token) return <ShareView token={token} />;
+
+  const path = window.location.pathname;
+  if (path === "/lanyards" || path.startsWith("/lanyards/")) {
+    const scheduleId = path.slice("/lanyards/".length) || null;
+    return (
+      <AuthProvider>
+        <LanyardsPage scheduleId={scheduleId} />
+      </AuthProvider>
+    );
+  }
+
   return (
     <AuthProvider>
       <App />

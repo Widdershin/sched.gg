@@ -51,6 +51,8 @@ export interface Measure {
 interface BlockOpts {
   center?: boolean;
   hideEnd?: boolean;
+  highlighted?: boolean;
+  dimmed?: boolean;
 }
 
 export interface CanvasLike {
@@ -231,7 +233,13 @@ function drawBlock(
   opts: BlockOpts,
   twitchGlyph: TwitchGlypher,
 ): void {
-  ctx.fillStyle = hexToRgba(accent, 0.2);
+  // Personalized renders fade events the entrant isn't in so their own pop.
+  if (opts.dimmed) {
+    ctx.save();
+    ctx.globalAlpha = 0.7;
+  }
+
+  ctx.fillStyle = hexToRgba(accent, opts.highlighted ? 0.32 : 0.2);
   roundRect(ctx, x, y, w, h, LAYOUT.blockRadius);
   ctx.fill();
   ctx.strokeStyle = hexToRgba(accent, 0.85);
@@ -239,9 +247,25 @@ function drawBlock(
   roundRect(ctx, x, y, w, h, LAYOUT.blockRadius);
   ctx.stroke();
 
+  // Emphasis pass for an entrant's own events: a brighter, thicker glowing
+  // outline so their blocks pop out of the full schedule.
+  if (opts.highlighted) {
+    ctx.save();
+    ctx.shadowColor = accent;
+    ctx.shadowBlur = 14;
+    ctx.strokeStyle = hexToRgba(accent, 1);
+    ctx.lineWidth = 3;
+    roundRect(ctx, x, y, w, h, LAYOUT.blockRadius);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   const innerX = x + 14;
   const innerW = w - 22;
-  if (innerW < 24) return;
+  if (innerW < 24) {
+    if (opts.dimmed) ctx.restore();
+    return;
+  }
 
   const lineH = 19;
   ctx.font = `700 16px ${THEME.font}`;
@@ -314,6 +338,8 @@ function drawBlock(
       });
     }
   }
+
+  if (opts.dimmed) ctx.restore();
 }
 
 function drawDaySection(
@@ -324,6 +350,7 @@ function drawDaySection(
   section: Section,
   canvasW: number,
   twitchGlyph: TwitchGlypher,
+  highlightEventIds?: Set<string>,
 ): void {
   const gridLeft = x + LAYOUT.gutterW;
   const headerTop = y + LAYOUT.subtitleH;
@@ -427,6 +454,10 @@ function drawDaySection(
       const start = parseTime(block.start);
       const end = parseTime(block.end);
       if (start == null || end == null || end <= start) continue;
+      const highlighted =
+        !!block.eventId && !!highlightEventIds?.has(block.eventId);
+      // In a personalized render, fade the events this entrant isn't in.
+      const dimmed = highlightEventIds != null && !highlighted;
       drawBlock(
         ctx,
         block,
@@ -435,7 +466,7 @@ function drawDaySection(
         blockW(start, end),
         LAYOUT.laneH - INSET * 2,
         accent,
-        {},
+        { highlighted, dimmed },
         twitchGlyph,
       );
     }
@@ -453,13 +484,28 @@ export interface RenderOpts {
   logoImg: ImageLike | null;
   twitchGlyph: TwitchGlypher;
   watermark?: boolean;
+  // Per-entrant personalization (lanyards): blocks whose eventId is in this set
+  // get a glowing emphasis, and `subtitle` (the entrant name) is drawn by the title.
+  highlightEventIds?: Set<string>;
+  subtitle?: string | null;
 }
 
 export function renderScheduleToContext(
   ctx: CanvasRenderingContext2D,
   opts: RenderOpts,
 ): void {
-  const { schedule, measure: m, W, H, titleH: th, logoImg, twitchGlyph, watermark = true } = opts;
+  const {
+    schedule,
+    measure: m,
+    W,
+    H,
+    titleH: th,
+    logoImg,
+    twitchGlyph,
+    watermark = true,
+    highlightEventIds,
+    subtitle,
+  } = opts;
 
   ctx.fillStyle = THEME.bg;
   ctx.fillRect(0, 0, W, H);
@@ -474,12 +520,24 @@ export function renderScheduleToContext(
     ctx.fillText(schedule.title || "Tournament", left, LAYOUT.pad + 40);
   }
 
+  // Entrant name, top-right, inset to match the watermark.
+  if (subtitle) {
+    const wmMargin = LAYOUT.pad / 2 - 8;
+    ctx.textBaseline = "top";
+    ctx.textAlign = "right";
+    ctx.font = `700 22px ${THEME.font}`;
+    ctx.fillStyle = THEME.muted;
+    ctx.fillText(subtitle, W - wmMargin, wmMargin);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+  }
+
   const contentRight = W - LAYOUT.pad;
   let y = LAYOUT.pad + th;
   schedule.days.forEach((day, i) => {
     const section = m.sections[i];
     const x = day.align === "right" ? contentRight - section.w : left;
-    drawDaySection(ctx, day, x, y, section, W, twitchGlyph);
+    drawDaySection(ctx, day, x, y, section, W, twitchGlyph, highlightEventIds);
     y += section.h + LAYOUT.dayGap;
   });
 

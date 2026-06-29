@@ -9,6 +9,9 @@ declare class CanvasRenderingContext2D {
   textAlign: string;
   textBaseline: string;
   globalCompositeOperation: string;
+  globalAlpha: number;
+  shadowColor: string;
+  shadowBlur: number;
   fillRect(x: number, y: number, w: number, h: number): void;
   fillText(text: string, x: number, y: number): void;
   measureText(text: string): { width: number };

@@ -60,12 +60,18 @@ const twitchGlyph: TwitchGlypher = (ctx, color, size) => {
 
 // --- Render entry point ------------------------------------------------------
 
+export interface RenderExtra {
+  highlightEventIds?: Set<string>;
+  subtitle?: string | null;
+}
+
 export function renderSchedule(
   canvas: HTMLCanvasElement,
   schedule: Schedule,
   scale = 2,
   aspectRatio: number | null = null,
   logoImg: HTMLImageElement | null = null,
+  extra: RenderExtra = {},
 ): Measure {
   const hasLogo = schedule.logo != null;
   const base = measureSchedule(schedule, 1, undefined, hasLogo);
@@ -114,6 +120,8 @@ export function renderSchedule(
     titleH: hasLogo ? 0 : LAYOUT.titleH,
     logoImg,
     twitchGlyph,
+    highlightEventIds: extra.highlightEventIds,
+    subtitle: extra.subtitle,
   });
 
   return m;

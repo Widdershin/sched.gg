@@ -4,7 +4,13 @@ import { uuid, token } from "../util/ids.js";
 import { type AppEnv, requireAuth } from "../auth/session.js";
 import { requireCsrf } from "../auth/csrf.js";
 import { renderScheduleToPng } from "../render.js";
-import type { Schedule, OutputSettings } from "../../../shared/types.js";
+import { getStartggAccessToken } from "../auth/startgg-token.js";
+import {
+  fetchTournamentParticipants,
+  StartggApiError,
+  type FetchedParticipant,
+} from "../startgg/tournament.js";
+import type { Schedule, OutputSettings, Entrant } from "../../../shared/types.js";
 
 const schedules = new Hono<AppEnv>();
 
@@ -227,6 +233,147 @@ schedules.get("/schedules/:id/image", async (c) => {
     "Cache-Control": "public, max-age=3600",
     "ETag": `"v${row.version}"`,
   });
+});
+
+// --- Tournament entrants (start.gg) ----------------------------------------
+
+interface EntrantRow {
+  participant_id: string;
+  gamer_tag: string | null;
+  event_ids: string;
+  role: string | null;
+}
+
+function readEntrants(scheduleId: string): Entrant[] {
+  const rows = db
+    .prepare(
+      `SELECT participant_id, gamer_tag, event_ids, role FROM schedule_entrants
+        WHERE schedule_id = ? ORDER BY gamer_tag COLLATE NOCASE`,
+    )
+    .all(scheduleId) as unknown as EntrantRow[];
+  return rows.map((r) => ({
+    id: r.participant_id,
+    gamerTag: r.gamer_tag ?? "",
+    eventIds: JSON.parse(r.event_ids) as string[],
+    role: r.role ?? "Competitor",
+  }));
+}
+
+// Persisted entrants for a schedule.
+schedules.get("/schedules/:id/entrants", (c) => {
+  const id = c.req.param("id");
+  const row = db
+    .prepare(
+      "SELECT entrants_synced_at FROM schedules WHERE id = ? AND user_id = ?",
+    )
+    .get(id, userId(c)) as { entrants_synced_at: number | null } | undefined;
+  if (!row) return c.json({ error: "not found" }, 404);
+  return c.json({ entrants: readEntrants(id), syncedAt: row.entrants_synced_at });
+});
+
+// Fetch entrants from start.gg and persist them (full replace), so the lanyards
+// page runs off stored data and a re-sync picks up new/dropped registrations.
+schedules.post("/schedules/:id/entrants/sync", requireCsrf, async (c) => {
+  const id = c.req.param("id");
+  const row = db
+    .prepare("SELECT data FROM schedules WHERE id = ? AND user_id = ?")
+    .get(id, userId(c)) as { data: string } | undefined;
+  if (!row) return c.json({ error: "not found" }, 404);
+
+  const schedule = JSON.parse(row.data) as Schedule;
+  const slug = schedule.startgg?.slug?.trim();
+  if (!slug) {
+    return c.json({ error: "schedule has no start.gg tournament" }, 400);
+  }
+
+  const accessToken = await getStartggAccessToken(userId(c));
+  if (!accessToken) return c.json({ error: "start.gg account not linked" }, 409);
+
+  let entrants: FetchedParticipant[];
+  try {
+    entrants = await fetchTournamentParticipants(accessToken, slug);
+  } catch (err) {
+    if (err instanceof StartggApiError && err.forbidden) {
+      return c.json({ error: "no access to this tournament" }, 403);
+    }
+    console.error("[startgg] participants query failed", err);
+    return c.json({ error: "start.gg query failed" }, 502);
+  }
+
+  const now = Date.now();
+  db.exec("BEGIN");
+  try {
+    // Upsert: existing entrants keep their assigned role (only tag/events/
+    // updated_at refresh); new ones default to Competitor. Idempotent, so a
+    // re-fetch never collides on (schedule_id, participant_id).
+    const upsert = db.prepare(
+      `INSERT INTO schedule_entrants
+         (id, schedule_id, participant_id, gamer_tag, event_ids, role, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'Competitor', ?)
+       ON CONFLICT (schedule_id, participant_id) DO UPDATE SET
+         gamer_tag = excluded.gamer_tag,
+         event_ids = excluded.event_ids,
+         updated_at = excluded.updated_at`,
+    );
+    for (const e of entrants) {
+      upsert.run(uuid(), id, e.id, e.gamerTag, JSON.stringify(e.eventIds), now);
+    }
+    // Remove entrants no longer in the tournament (anything not touched this sync).
+    db.prepare(
+      "DELETE FROM schedule_entrants WHERE schedule_id = ? AND updated_at < ?",
+    ).run(id, now);
+    db.prepare("UPDATE schedules SET entrants_synced_at = ? WHERE id = ?").run(
+      now,
+      id,
+    );
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+
+  return c.json({ entrants: readEntrants(id), syncedAt: now });
+});
+
+// Assign a role to a single entrant.
+schedules.put("/schedules/:id/entrants/:pid/role", requireCsrf, async (c) => {
+  const id = c.req.param("id");
+  const pid = c.req.param("pid");
+  const owned = db
+    .prepare("SELECT id FROM schedules WHERE id = ? AND user_id = ?")
+    .get(id, userId(c));
+  if (!owned) return c.json({ error: "not found" }, 404);
+
+  const body = (await c.req.json().catch(() => ({}))) as { role?: string };
+  const role = (body.role || "Competitor").toString().slice(0, 100);
+  const res = db
+    .prepare(
+      "UPDATE schedule_entrants SET role = ?, updated_at = ? WHERE schedule_id = ? AND participant_id = ?",
+    )
+    .run(role, Date.now(), id, pid);
+  if (res.changes === 0) return c.json({ error: "entrant not found" }, 404);
+  return c.json({ ok: true });
+});
+
+// Bulk reassign all entrants of one role to another (used when deleting a role).
+schedules.post("/schedules/:id/entrants/reassign-role", requireCsrf, async (c) => {
+  const id = c.req.param("id");
+  const owned = db
+    .prepare("SELECT id FROM schedules WHERE id = ? AND user_id = ?")
+    .get(id, userId(c));
+  if (!owned) return c.json({ error: "not found" }, 404);
+
+  const body = (await c.req.json().catch(() => ({}))) as {
+    from?: string;
+    to?: string;
+  };
+  const from = (body.from || "").toString();
+  const to = (body.to || "Competitor").toString().slice(0, 100);
+  if (!from) return c.json({ error: "missing from" }, 400);
+  db.prepare(
+    "UPDATE schedule_entrants SET role = ?, updated_at = ? WHERE schedule_id = ? AND role = ?",
+  ).run(to, Date.now(), id, from);
+  return c.json({ ok: true });
 });
 
 export default schedules;

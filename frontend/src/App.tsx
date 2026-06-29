@@ -10,6 +10,7 @@ import {
 } from "./model";
 import Editor from "./Editor";
 import Preview from "./Preview";
+import StartggPanel from "./StartggPanel";
 import { scheduleToCsv, csvToSchedule } from "./csv";
 import { useAuth } from "./AuthContext";
 import AccountMenu from "./AccountMenu";
@@ -423,8 +424,18 @@ export default function App() {
 
       <main className="workspace">
         <section className="editor-pane">
+          <StartggPanel
+            schedule={schedule}
+            update={update}
+            scheduleId={currentScheduleId}
+          />
           {activeDay && (
-            <Editor key={activeDay.id} day={activeDay} update={update} />
+            <Editor
+              key={activeDay.id}
+              day={activeDay}
+              update={update}
+              events={schedule.startgg?.events ?? []}
+            />
           )}
         </section>
         <section className="preview-pane">

@@ -9,6 +9,13 @@ import type {
   Schedule,
   AspectMode,
   OutputSettings,
+  StartggEvent,
+  StartggBinding,
+  Entrant,
+  LanyardElementType,
+  LanyardElement,
+  LanyardSide,
+  LanyardDesign,
 } from "../../shared/types.js";
 
 export type {
@@ -21,6 +28,13 @@ export type {
   Schedule,
   AspectMode,
   OutputSettings,
+  StartggEvent,
+  StartggBinding,
+  Entrant,
+  LanyardElementType,
+  LanyardElement,
+  LanyardSide,
+  LanyardDesign,
 };
 
 // Mutate a draft schedule in place (used with App's structuredClone helper).

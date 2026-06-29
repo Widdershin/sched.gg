@@ -7,6 +7,7 @@ import health from "./routes/health.js";
 import authRoutes from "./routes/auth.js";
 import schedules from "./routes/schedules.js";
 import share from "./routes/share.js";
+import startgg from "./routes/startgg.js";
 
 const app = new Hono<AppEnv>();
 
@@ -18,6 +19,7 @@ app.route("/", health);
 app.route("/", authRoutes);
 app.route("/", schedules);
 app.route("/", share);
+app.route("/", startgg);
 
 app.onError((err, c) => {
   console.error("[backend] unhandled error", err);

@@ -7,6 +7,7 @@ export interface Block {
   end: string; // "HH:MM" (24h)
   stream: string;
   stream2: string;
+  eventId?: string; // linked start.gg event id (for per-entrant highlighting)
 }
 
 export interface Lane {
@@ -35,10 +36,83 @@ export interface Logo {
   y: number; // 0-100 % of free space
 }
 
+// A start.gg event the schedule's blocks can be linked to.
+export interface StartggEvent {
+  id: string;
+  name: string;
+}
+
+// The start.gg tournament a schedule is bound to, plus its event list (cached
+// for the per-block event dropdowns in the editor).
+export interface StartggBinding {
+  slug: string;
+  events: StartggEvent[];
+}
+
+// --- Lanyard designer --------------------------------------------------------
+
+export type LanyardElementType =
+  | "image"
+  | "text"
+  | "tag"
+  | "schedule"
+  | "shape"
+  | "roleImage";
+
+// A placeable element on one side of a lanyard. Positions/sizes are fractions of
+// the side (0..1) so they're resolution-independent. `tag` and `schedule` are
+// dynamic — filled per entrant at render time; the rest are shared across cards.
+export interface LanyardElement {
+  id: string;
+  type: LanyardElementType;
+  x: number; // top-left, fraction of side width
+  y: number; // top-left, fraction of side height
+  w: number; // width, fraction of side width
+  h?: number; // shapes only: height, fraction of side height (others derive)
+  // image
+  src?: string; // downscaled PNG data URL
+  // text / tag
+  text?: string; // static content (type "text")
+  fontFrac?: number; // font size, fraction of side height
+  color?: string;
+  align?: "left" | "center" | "right";
+  bold?: boolean;
+  // shape
+  shape?: "rect" | "line";
+  fill?: string;
+}
+
+export interface LanyardSide {
+  background: string; // hex color
+  elements: LanyardElement[]; // array order = z-order (last drawn on top)
+}
+
+export interface LanyardDesign {
+  widthMm: number;
+  heightMm: number;
+  dpi: number;
+  front: LanyardSide;
+  back: LanyardSide;
+  // role name → downscaled image data URL, shared across all roleImage elements.
+  roleImages?: Record<string, string>;
+}
+
 export interface Schedule {
   title: string;
   days: Day[];
   logo?: Logo | null;
+  startgg?: StartggBinding | null;
+  lanyard?: LanyardDesign | null;
+  roles?: string[]; // player role types (defaults to ["Competitor"])
+}
+
+// A tournament entrant (start.gg participant) and the events they're in.
+// Persisted server-side per schedule; drives the lanyards page.
+export interface Entrant {
+  id: string; // start.gg participant id
+  gamerTag: string;
+  eventIds: string[];
+  role: string; // assigned role (defaults to "Competitor")
 }
 
 export type AspectMode =

@@ -7,6 +7,7 @@ import {
 } from "react";
 import { renderSchedule, onAssetsReady } from "./render";
 import { api } from "./api";
+import { fileToImageDataUrl } from "./images";
 import type { OutputSettings, Schedule, UpdateFn } from "./types";
 
 // Aspect modes. "fit" sizes tightly to the content; presets fix the ratio;
@@ -23,30 +24,6 @@ function resolveRatio(output: OutputSettings): number | null {
   }
   const [pw, ph] = mode.split(":").map(Number);
   return pw / ph;
-}
-
-// Read an image file, downscale to keep localStorage small, return a PNG data URL.
-function fileToLogoDataUrl(file: File, max = 1000): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = reject;
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = reject;
-      img.onload = () => {
-        const ratio = Math.min(1, max / Math.max(img.width, img.height));
-        const w = Math.round(img.width * ratio);
-        const h = Math.round(img.height * ratio);
-        const c = document.createElement("canvas");
-        c.width = w;
-        c.height = h;
-        c.getContext("2d")!.drawImage(img, 0, 0, w, h);
-        resolve(c.toDataURL("image/png"));
-      };
-      img.src = reader.result as string;
-    };
-    reader.readAsDataURL(file);
-  });
 }
 
 const DEFAULT_LOGO = { size: 18, x: 2, y: 2 };
@@ -166,7 +143,7 @@ export default function Preview({ schedule, update, output, setOutput, scheduleI
   const onLogoFile = async (file: File | undefined) => {
     if (!file) return;
     try {
-      const src = await fileToLogoDataUrl(file);
+      const src = await fileToImageDataUrl(file);
       update((s) => {
         s.logo = { ...DEFAULT_LOGO, ...(s.logo || {}), src };
       });
