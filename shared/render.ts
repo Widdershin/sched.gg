@@ -2,7 +2,7 @@
 // (@napi-rs/canvas). Platform-specific glue (image loading, canvas creation,
 // Twitch icon caching) lives in each platform's own render.ts.
 import { dayTimeRange, parseTime, formatTime } from "./model.js";
-import type { Block, Day, Schedule } from "./types.js";
+import type { Block, Day, Schedule, VisualSettings } from "./types.js";
 
 // --- Theme & layout constants -------------------------------------------------
 
@@ -36,6 +36,19 @@ export const LAYOUT = {
   blockBorderWidth: 1.5,
   gridLineWidth: 1.0,
 };
+
+export type ResolvedTheme = typeof THEME;
+export type ResolvedLayout = typeof LAYOUT;
+
+export function resolveTheme(vs?: VisualSettings | null): ResolvedTheme {
+  if (!vs || vs.mode !== "custom") return THEME;
+  return { ...THEME, ...Object.fromEntries(Object.entries(vs).filter(([k]) => k !== "mode")) };
+}
+
+export function resolveLayout(vs?: VisualSettings | null): ResolvedLayout {
+  if (!vs || vs.mode !== "custom") return LAYOUT;
+  return { ...LAYOUT, ...Object.fromEntries(Object.entries(vs).filter(([k]) => k !== "mode")) };
+}
 
 // --- Types -------------------------------------------------------------------
 
@@ -238,6 +251,8 @@ function drawBlock(
   accent: string,
   opts: BlockOpts,
   twitchGlyph: TwitchGlypher,
+  theme: ResolvedTheme = THEME,
+  layout: ResolvedLayout = LAYOUT,
 ): void {
   // Personalized renders fade events the entrant isn't in so their own pop.
   if (opts.dimmed) {
@@ -357,6 +372,8 @@ function drawDaySection(
   canvasW: number,
   twitchGlyph: TwitchGlypher,
   highlightEventIds?: Set<string>,
+  theme: ResolvedTheme = THEME,
+  layout: ResolvedLayout = LAYOUT,
 ): void {
   const gridLeft = x + LAYOUT.gutterW;
   const headerTop = y + LAYOUT.subtitleH;
@@ -490,6 +507,7 @@ export interface RenderOpts {
   logoImg: ImageLike | null;
   twitchGlyph: TwitchGlypher;
   watermark?: boolean;
+  visuals?: VisualSettings | null;
   // Per-entrant personalization (lanyards): blocks whose eventId is in this set
   // get a glowing emphasis, and `subtitle` (the entrant name) is drawn by the title.
   highlightEventIds?: Set<string>;
@@ -511,9 +529,14 @@ export function renderScheduleToContext(
     watermark = true,
     highlightEventIds,
     subtitle,
+    visuals,
   } = opts;
 
+  const theme = resolveTheme(visuals);
+  const layout = resolveLayout(visuals);
+
   ctx.fillStyle = THEME.bg;
+
   ctx.fillRect(0, 0, W, H);
 
   const left = LAYOUT.pad;
