@@ -3,10 +3,10 @@ import { createCanvas, loadImage, GlobalFonts } from "@napi-rs/canvas";
 import {
   measureSchedule,
   renderScheduleToContext,
+  resolveLayout,
 } from "../../shared/render.js";
 import type { Schedule, OutputSettings, VisualSettings } from "../../shared/types.js";
 import type { TwitchGlypher, CanvasLike, ImageLike } from "../../shared/render.js";
-import { LAYOUT } from "../../shared/render.js";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -95,7 +95,8 @@ export async function renderScheduleToPng(
 
   // Aspect ratio handling — same logic as frontend render.ts.
   const aspectRatio = resolveRatio(opts.output);
-  const base = measureSchedule(opts.schedule, 1, undefined, hasLogo);
+  const layout = resolveLayout(opts.visuals);
+  const base = measureSchedule(opts.schedule, 1, undefined, hasLogo, layout);
   let hScale = 1;
   let forcedWidth: number | undefined;
   if (aspectRatio && aspectRatio > 0) {
@@ -107,7 +108,7 @@ export async function renderScheduleToPng(
       .filter((w) => w > 0);
     if (autoTracks.length > 0) {
       const baseTrackMax = Math.max(...autoTracks);
-      const targetTrack = targetW - LAYOUT.pad * 2 - LAYOUT.gutterW;
+      const targetTrack = targetW - layout.pad * 2 - layout.gutterW;
       hScale = targetTrack / baseTrackMax;
       if (!Number.isFinite(hScale) || hScale <= 0) hScale = 0.05;
     } else {
@@ -117,7 +118,7 @@ export async function renderScheduleToPng(
   const m =
     hScale === 1 && forcedWidth == null
       ? base
-      : measureSchedule(opts.schedule, hScale, forcedWidth, hasLogo);
+      : measureSchedule(opts.schedule, hScale, forcedWidth, hasLogo, layout);
   const W = m.width;
   const H = m.height;
 
@@ -142,7 +143,7 @@ export async function renderScheduleToPng(
     measure: m,
     W,
     H,
-    titleH: hasLogo ? 0 : LAYOUT.titleH,
+    titleH: hasLogo ? 0 : layout.titleH,
     logoImg: logoImg as ImageLike,
     twitchGlyph,
     visuals: opts.visuals,

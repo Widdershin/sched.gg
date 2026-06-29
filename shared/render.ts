@@ -171,14 +171,14 @@ function ellipsize(
 
 // --- Layout measurement -------------------------------------------------------
 
-function measureDaySection(day: Day, hScale = 1): Section {
+function measureDaySection(day: Day, hScale = 1, layout: ResolvedLayout = LAYOUT): Section {
   const { min, max } = dayTimeRange(day);
   const laneCount = Math.max(day.lanes.length, 1);
-  const pxPerMin = LAYOUT.pxPerMin * hScale;
+  const pxPerMin = layout.pxPerMin * hScale;
   const trackW = (max - min) * pxPerMin;
-  const w = LAYOUT.gutterW + trackW;
-  const lanesH = laneCount * LAYOUT.laneH + (laneCount - 1) * LAYOUT.laneGap;
-  const h = LAYOUT.subtitleH + LAYOUT.timeHeaderH + lanesH;
+  const w = layout.gutterW + trackW;
+  const lanesH = laneCount * layout.laneH + (laneCount - 1) * layout.laneGap;
+  const h = layout.subtitleH + layout.timeHeaderH + lanesH;
   return { w, h, min, max, trackW, pxPerMin };
 }
 
@@ -187,10 +187,11 @@ export function measureSchedule(
   hScale = 1,
   targetWidth?: number,
   hasLogo?: boolean,
+  layout: ResolvedLayout = LAYOUT,
 ): Measure {
   const days = schedule.days.length ? schedule.days : [];
 
-  const naturalSections = days.map((d) => measureDaySection(d, hScale));
+  const naturalSections = days.map((d) => measureDaySection(d, hScale, layout));
 
   let autoContentW = 0;
   for (let i = 0; i < days.length; i++) {
@@ -201,22 +202,22 @@ export function measureSchedule(
   if (autoContentW === 0) autoContentW = 400;
 
   const contentBase =
-    targetWidth != null ? targetWidth - LAYOUT.pad * 2 : autoContentW;
+    targetWidth != null ? targetWidth - layout.pad * 2 : autoContentW;
 
   const sections = days.map((day, i) => {
     if (day.dayWidth === "auto") return naturalSections[i];
 
     const pct = clamp(Number(day.dayWidth), 5, 100);
     const targetW = Math.round((contentBase * pct) / 100);
-    const targetTrackW = Math.max(targetW - LAYOUT.gutterW, 30);
+    const targetTrackW = Math.max(targetW - layout.gutterW, 30);
 
     const { min, max } = naturalSections[i];
     const range = max - min;
     const pxPerMin =
-      range > 0 ? targetTrackW / range : LAYOUT.pxPerMin * hScale;
+      range > 0 ? targetTrackW / range : layout.pxPerMin * hScale;
     const laneCount = Math.max(day.lanes.length, 1);
-    const lanesH = laneCount * LAYOUT.laneH + (laneCount - 1) * LAYOUT.laneGap;
-    const h = LAYOUT.subtitleH + LAYOUT.timeHeaderH + lanesH;
+    const lanesH = laneCount * layout.laneH + (laneCount - 1) * layout.laneGap;
+    const h = layout.subtitleH + layout.timeHeaderH + lanesH;
 
     return { w: targetW, h, min, max, trackW: targetTrackW, pxPerMin };
   });
@@ -225,18 +226,18 @@ export function measureSchedule(
   const width =
     targetWidth != null
       ? targetWidth
-      : LAYOUT.pad * 2 + (sections.length ? contentW : 400);
+      : layout.pad * 2 + (sections.length ? contentW : 400);
   const stacked = sections.reduce((acc, s) => acc + s.h, 0);
   const height =
-    LAYOUT.pad * 2 +
-    titleHeight(!!hasLogo) +
+    layout.pad * 2 +
+    titleHeight(!!hasLogo, layout) +
     stacked +
-    Math.max(sections.length - 1, 0) * LAYOUT.dayGap;
+    Math.max(sections.length - 1, 0) * layout.dayGap;
   return { width, height, sections };
 }
 
-function titleHeight(hasLogo: boolean): number {
-  return hasLogo ? 0 : LAYOUT.titleH;
+function titleHeight(hasLogo: boolean, layout: ResolvedLayout = LAYOUT): number {
+  return hasLogo ? 0 : layout.titleH;
 }
 
 // --- Drawing -----------------------------------------------------------------
@@ -539,35 +540,35 @@ export function renderScheduleToContext(
 
   ctx.fillRect(0, 0, W, H);
 
-  const left = LAYOUT.pad;
+  const left = layout.pad;
 
   if (th > 0) {
     ctx.textBaseline = "alphabetic";
     ctx.textAlign = "left";
-    ctx.fillStyle = THEME.title;
-    ctx.font = `800 40px ${THEME.font}`;
-    ctx.fillText(schedule.title || "Tournament", left, LAYOUT.pad + 40);
+    ctx.fillStyle = theme.title;
+    ctx.font = `800 40px ${theme.font}`;
+    ctx.fillText(schedule.title || "Tournament", left, layout.pad + 40);
   }
 
   // Entrant name, top-right, inset to match the watermark.
   if (subtitle) {
-    const wmMargin = LAYOUT.pad / 2 - 8;
+    const wmMargin = layout.pad / 2 - 8;
     ctx.textBaseline = "top";
     ctx.textAlign = "right";
-    ctx.font = `700 22px ${THEME.font}`;
-    ctx.fillStyle = THEME.muted;
+    ctx.font = `700 22px ${theme.font}`;
+    ctx.fillStyle = theme.muted;
     ctx.fillText(subtitle, W - wmMargin, wmMargin);
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
   }
 
-  const contentRight = W - LAYOUT.pad;
-  let y = LAYOUT.pad + th;
+  const contentRight = W - layout.pad;
+  let y = layout.pad + th;
   schedule.days.forEach((day, i) => {
     const section = m.sections[i];
     const x = day.align === "right" ? contentRight - section.w : left;
-    drawDaySection(ctx, day, x, y, section, W, twitchGlyph, highlightEventIds);
-    y += section.h + LAYOUT.dayGap;
+    drawDaySection(ctx, day, x, y, section, W, twitchGlyph, highlightEventIds, theme, layout);
+    y += section.h + layout.dayGap;
   });
 
   if (logoImg && schedule.logo && (logoImg.naturalWidth ?? logoImg.width) > 0) {
@@ -580,9 +581,9 @@ export function renderScheduleToContext(
   }
 
   if (watermark) {
-    const wmMargin = LAYOUT.pad / 2 - 8;
-    ctx.font = `600 15px ${THEME.font}`;
-    ctx.fillStyle = hexToRgba(THEME.text, THEME.watermarkAlpha);
+    const wmMargin = layout.pad / 2 - 8;
+    ctx.font = `600 15px ${theme.font}`;
+    ctx.fillStyle = hexToRgba(theme.text, theme.watermarkAlpha);
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
     ctx.fillText("sched.gg", W - wmMargin, H - wmMargin);
