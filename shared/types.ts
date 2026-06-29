@@ -132,6 +132,7 @@ export interface OutputSettings {
   w: number;
   h: number;
   scale: number;
+  visuals?: VisualSettings | null;
 }
 
 export interface VisualSettings {

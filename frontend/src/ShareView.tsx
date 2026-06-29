@@ -86,6 +86,8 @@ export default function ShareView({ token }: { token: string }) {
       scale,
       resolveRatio(state.output),
       logoImg,
+      {},
+      state.output?.visuals,
     );
   }, [state, logoImg, assetTick, logoSrc]);
 

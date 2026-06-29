@@ -52,6 +52,7 @@ export async function renderScheduleImage(
   const png = await renderScheduleToPng({
     schedule,
     output,
+    visuals: output?.visuals,
     logoBytes: row.logo ?? undefined,
   });
 

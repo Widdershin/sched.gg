@@ -84,7 +84,10 @@ export default function App() {
     }
 
     setSchedule(normalized);
-    if (full.output) setOutput(full.output);
+    if (full.output) {
+      setOutput(full.output);
+      if (full.output.visuals) setVisuals(full.output.visuals);
+    }
     setActiveDayId(full.data.days?.[0]?.id ?? null);
     setCurrentScheduleId(id);
   };
@@ -109,7 +112,7 @@ export default function App() {
           const created = await api.createSchedule({
             name: schedule.title || "My Tournament",
             data: schedule,
-            output,
+        output: { ...output, visuals },
           });
           if (cancelled) return;
           setScheduleList([created]);
@@ -136,7 +139,10 @@ export default function App() {
         delete (clean.logo as unknown as Record<string, unknown>).src;
       }
       api
-        .updateSchedule(currentScheduleId, { data: clean, output })
+        .updateSchedule(currentScheduleId, {
+          data: clean,
+          output: { ...output, visuals },
+        })
         .catch(() => {});
     }, SERVER_SAVE_DEBOUNCE_MS);
     return () => clearTimeout(t);
