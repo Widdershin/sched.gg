@@ -3,8 +3,10 @@ import {
   LAYOUT,
   measureSchedule,
   renderScheduleToContext,
+  resolveTheme,
+  resolveLayout,
 } from "../../shared/render.js";
-import type { Schedule } from "../../shared/types.js";
+import type { Schedule, VisualSettings } from "../../shared/types.js";
 import type { Measure, TwitchGlypher } from "../../shared/render.js";
 
 export { measureSchedule };
@@ -72,6 +74,7 @@ export function renderSchedule(
   aspectRatio: number | null = null,
   logoImg: HTMLImageElement | null = null,
   extra: RenderExtra = {},
+  visuals?: VisualSettings | null,
 ): Measure {
   const hasLogo = schedule.logo != null;
   const base = measureSchedule(schedule, 1, undefined, hasLogo);
@@ -122,6 +125,7 @@ export function renderSchedule(
     twitchGlyph,
     highlightEventIds: extra.highlightEventIds,
     subtitle: extra.subtitle,
+    visuals,
   });
 
   return m;

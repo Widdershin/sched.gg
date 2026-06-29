@@ -443,6 +443,15 @@ select option {
   outline: none;
   border-color: var(--accent);
 }
+.ctl input[type="color"] {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
 .ctl-unit {
   margin-left: -2px;
 }

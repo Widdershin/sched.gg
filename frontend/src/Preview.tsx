@@ -8,7 +8,7 @@ import {
 import { renderSchedule, onAssetsReady } from "./render";
 import { api } from "./api";
 import { fileToImageDataUrl } from "./images";
-import type { OutputSettings, Schedule, UpdateFn } from "./types";
+import type { OutputSettings, Schedule, UpdateFn, VisualSettings } from "./types";
 
 // Aspect modes. "fit" sizes tightly to the content; presets fix the ratio;
 // "custom" uses the W:H controls.
@@ -78,10 +78,12 @@ interface Props {
   update: UpdateFn;
   output: OutputSettings;
   setOutput: Dispatch<SetStateAction<OutputSettings>>;
+  visuals: VisualSettings;
+  setVisuals: Dispatch<SetStateAction<VisualSettings>>;
   scheduleId?: string | null;
 }
 
-export default function Preview({ schedule, update, output, setOutput, scheduleId }: Props) {
+export default function Preview({ schedule, update, output, setOutput, visuals, setVisuals, scheduleId }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null);
@@ -118,6 +120,8 @@ export default function Preview({ schedule, update, output, setOutput, scheduleI
           output.scale,
           resolveRatio(output),
           logoImg,
+          {},
+          visuals,
         );
       }
     }, RENDER_DEBOUNCE_MS);
@@ -217,6 +221,71 @@ export default function Preview({ schedule, update, output, setOutput, scheduleI
             e.target.value = "";
           }}
         />
+        <span className="scale-field">
+          Theme
+          <select
+            value={visuals.mode}
+            onChange={(e) =>
+              setVisuals((prev) => ({
+                ...prev,
+                mode: e.target.value as "default" | "custom",
+              }))
+            }
+          >
+            <option value="default">Default</option>
+            <option value="custom">Custom</option>
+          </select>
+        </span>
+        {visuals.mode === "custom" && (
+          <>
+            <span className="ctl">
+              BG
+              <input
+                type="color"
+                value={visuals.bg || "#0e1220"}
+                onChange={(e) =>
+                  setVisuals((prev) => ({ ...prev, bg: e.target.value }))
+                }
+              />
+            </span>
+            <span className="ctl">
+              Grid
+              <input
+                type="color"
+                value={visuals.grid || "#252c42"}
+                onChange={(e) =>
+                  setVisuals((prev) => ({ ...prev, grid: e.target.value }))
+                }
+              />
+            </span>
+            <span className="ctl">
+              Text
+              <input
+                type="color"
+                value={visuals.text || "#f5f7fb"}
+                onChange={(e) =>
+                  setVisuals((prev) => ({ ...prev, text: e.target.value }))
+                }
+              />
+            </span>
+            <SliderControl
+              label="Radius"
+              value={visuals.blockRadius ?? 10}
+              min={0}
+              max={20}
+              unit="px"
+              onChange={(v) => setVisuals((prev) => ({ ...prev, blockRadius: v }))}
+            />
+            <SliderControl
+              label="Lane H"
+              value={visuals.laneH ?? 92}
+              min={48}
+              max={140}
+              unit="px"
+              onChange={(v) => setVisuals((prev) => ({ ...prev, laneH: v }))}
+            />
+          </>
+        )}
         <label className="scale-field push-right">
           Aspect
           <select

@@ -4,7 +4,7 @@ import {
   measureSchedule,
   renderScheduleToContext,
 } from "../../shared/render.js";
-import type { Schedule, OutputSettings } from "../../shared/types.js";
+import type { Schedule, OutputSettings, VisualSettings } from "../../shared/types.js";
 import type { TwitchGlypher, CanvasLike, ImageLike } from "../../shared/render.js";
 import { LAYOUT } from "../../shared/render.js";
 import { join, dirname } from "node:path";
@@ -71,6 +71,7 @@ export interface RenderOptions {
   schedule: Schedule;
   output?: OutputSettings | null;
   logoBytes?: Buffer | null;
+  visuals?: VisualSettings | null;
 }
 
 function resolveRatio(output?: OutputSettings | null): number | null {
@@ -144,6 +145,7 @@ export async function renderScheduleToPng(
     titleH: hasLogo ? 0 : LAYOUT.titleH,
     logoImg: logoImg as ImageLike,
     twitchGlyph,
+    visuals: opts.visuals,
   });
 
   return canvas.toBuffer("image/png");
