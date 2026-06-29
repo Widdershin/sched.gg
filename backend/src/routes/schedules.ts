@@ -1,4 +1,4 @@
-import { Hono, type Context } from "hono";
+import { Hono } from "hono";
 import { db } from "../db.js";
 import { uuid, token } from "../util/ids.js";
 import {
@@ -23,7 +23,14 @@ import {
   deleteManualEntrant,
   reassignRole,
 } from "../entrants-store.js";
-import type { Schedule, OutputSettings } from "../../../shared/types.js";
+import type { Schedule } from "../../../shared/types.js";
+import {
+  userId,
+  getOwnedSchedule,
+  parseScheduleRow,
+  parseJsonBody,
+  invalidateScheduleCache,
+} from "./shared.js";
 
 const schedules = new Hono<AppEnv>();
 
@@ -33,10 +40,6 @@ schedules.use("/schedules/*", requireAuth);
 // Ownership is enforced once here for every /schedules/:id... route.
 schedules.use("/schedules/:id", requireScheduleOwner);
 schedules.use("/schedules/:id/*", requireScheduleOwner);
-
-function userId(c: Context<AppEnv>): string {
-  return c.get("user")!.id;
-}
 
 // List the current user's schedules (metadata only).
 schedules.get("/schedules", (c) => {
@@ -51,11 +54,11 @@ schedules.get("/schedules", (c) => {
 
 // Create a schedule.
 schedules.post("/schedules", requireCsrf, async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as {
+  const body = await parseJsonBody<{
     name?: string;
     data?: unknown;
     output?: unknown;
-  };
+  }>(c);
   const name = (body.name || "Untitled tournament").toString().slice(0, 200);
   const id = uuid();
   const now = Date.now();
@@ -76,14 +79,9 @@ schedules.post("/schedules", requireCsrf, async (c) => {
 
 // Fetch a single schedule (parsed).
 schedules.get("/schedules/:id", (c) => {
-  const row = db
-    .prepare(
-      `SELECT id, name, data, output, updated_at FROM schedules
-        WHERE id = ? AND user_id = ?`,
-    )
-    .get(c.req.param("id"), userId(c)) as
-    | { id: string; name: string; data: string; output: string | null; updated_at: number }
-    | undefined;
+  const row = getOwnedSchedule<{
+    id: string; name: string; data: string; output: string | null; updated_at: number;
+  }>(c.req.param("id"), "id, name, data, output, updated_at");
   if (!row) return c.json({ error: "not found" }, 404);
   return c.json({
     id: row.id,
@@ -97,11 +95,11 @@ schedules.get("/schedules/:id", (c) => {
 // Update a schedule (autosave target). Any of name/data/output may be present.
 schedules.put("/schedules/:id", requireCsrf, async (c) => {
   const id = c.req.param("id");
-  const body = (await c.req.json().catch(() => ({}))) as {
+  const body = await parseJsonBody<{
     name?: string;
     data?: unknown;
     output?: unknown;
-  };
+  }>(c);
   const sets: string[] = [];
   const params: unknown[] = [];
   if (body.name !== undefined) {
@@ -117,7 +115,7 @@ schedules.put("/schedules/:id", requireCsrf, async (c) => {
     params.push(body.output != null ? JSON.stringify(body.output) : null);
   }
   if (body.data !== undefined || body.output !== undefined) {
-    sets.push("version = version + 1, rendered_image = NULL");
+    invalidateScheduleCache(id);
   }
   const now = Date.now();
   sets.push("updated_at = ?");
@@ -132,8 +130,8 @@ schedules.put("/schedules/:id", requireCsrf, async (c) => {
 // Delete a schedule.
 schedules.delete("/schedules/:id", requireCsrf, (c) => {
   const res = db
-    .prepare("DELETE FROM schedules WHERE id = ? AND user_id = ?")
-    .run(c.req.param("id"), userId(c));
+    .prepare("DELETE FROM schedules WHERE id = ?")
+    .run(c.req.param("id"));
   if (res.changes === 0) return c.json({ error: "not found" }, 404);
   return c.json({ ok: true });
 });
@@ -157,11 +155,8 @@ schedules.put("/schedules/:id/logo", requireCsrf, async (c) => {
     return c.json({ error: "invalid body" }, 400);
   }
   const now = Date.now();
-  db.prepare("UPDATE schedules SET logo = ?, version = version + 1, rendered_image = NULL, updated_at = ? WHERE id = ?").run(
-    buf,
-    now,
-    id,
-  );
+  db.prepare("UPDATE schedules SET logo = ?, updated_at = ? WHERE id = ?").run(buf, now, id);
+  invalidateScheduleCache(id);
   return c.json({ ok: true, updated_at: now });
 });
 
@@ -169,36 +164,27 @@ schedules.put("/schedules/:id/logo", requireCsrf, async (c) => {
 schedules.delete("/schedules/:id/logo", requireCsrf, (c) => {
   const id = c.req.param("id");
   const now = Date.now();
-  db.prepare("UPDATE schedules SET logo = NULL, version = version + 1, rendered_image = NULL, updated_at = ? WHERE id = ?").run(
-    now,
-    id,
-  );
+  db.prepare("UPDATE schedules SET logo = NULL, updated_at = ? WHERE id = ?").run(now, id);
+  invalidateScheduleCache(id);
   return c.json({ ok: true, updated_at: now });
 });
 
 // Logo download — returns raw PNG bytes.
 schedules.get("/schedules/:id/logo", (c) => {
-  const row = db
-    .prepare("SELECT logo FROM schedules WHERE id = ? AND user_id = ?")
-    .get(c.req.param("id"), userId(c)) as
-    | { logo: Buffer | null }
-    | undefined;
-  if (!row || !row.logo) {
-    return c.body(null, 204);
-  }
+  const row = getOwnedSchedule<{ logo: Buffer | null }>(
+    c.req.param("id"), "logo",
+  );
+  if (!row || !row.logo) return c.body(null, 204);
   return c.body(new Uint8Array(row.logo), 200, { "Content-Type": "image/png" });
 });
 
 // Render the schedule to a PNG image (auth required).
 schedules.get("/schedules/:id/image", async (c) => {
   const id = c.req.param("id");
-  const row = db
-    .prepare(
-      "SELECT version, data, output, logo, rendered_image FROM schedules WHERE id = ? AND user_id = ?",
-    )
-    .get(id, userId(c)) as
-    | { version: number; data: string; output: string | null; logo: Buffer | null; rendered_image: Buffer | null }
-    | undefined;
+  const row = getOwnedSchedule<{
+    version: number; data: string; output: string | null;
+    logo: Buffer | null; rendered_image: Buffer | null;
+  }>(id, "version, data, output, logo, rendered_image");
   if (!row) return c.json({ error: "not found" }, 404);
 
   // Return cached BLOB if present.
@@ -210,8 +196,7 @@ schedules.get("/schedules/:id/image", async (c) => {
     });
   }
 
-  const schedule = JSON.parse(row.data) as Schedule;
-  const output = row.output ? (JSON.parse(row.output) as OutputSettings) : null;
+  const { schedule, output } = parseScheduleRow(row);
 
   const png = await renderScheduleToPng({
     schedule,
@@ -250,9 +235,7 @@ schedules.get("/schedules/:id/entrants", (c) => {
 // page runs off stored data and a re-sync picks up new/dropped registrations.
 schedules.post("/schedules/:id/entrants/sync", requireCsrf, async (c) => {
   const id = c.req.param("id");
-  const row = db
-    .prepare("SELECT data FROM schedules WHERE id = ? AND user_id = ?")
-    .get(id, userId(c)) as { data: string } | undefined;
+  const row = getOwnedSchedule<{ data: string }>(id, "data");
   if (!row) return c.json({ error: "not found" }, 404);
 
   const schedule = JSON.parse(row.data) as Schedule;
@@ -284,7 +267,7 @@ schedules.post("/schedules/:id/entrants/sync", requireCsrf, async (c) => {
 schedules.put("/schedules/:id/entrants/:pid/role", requireCsrf, async (c) => {
   const id = c.req.param("id");
   const pid = c.req.param("pid");
-  const body = (await c.req.json().catch(() => ({}))) as { role?: string };
+  const body = await parseJsonBody<{ role?: string }>(c);
   const role = (body.role || "Competitor").toString().slice(0, 100);
   if (!setEntrantRole(db, id, pid, role)) {
     return c.json({ error: "entrant not found" }, 404);
@@ -295,10 +278,10 @@ schedules.put("/schedules/:id/entrants/:pid/role", requireCsrf, async (c) => {
 // Bulk reassign all entrants of one role to another (used when deleting a role).
 schedules.post("/schedules/:id/entrants/reassign-role", requireCsrf, async (c) => {
   const id = c.req.param("id");
-  const body = (await c.req.json().catch(() => ({}))) as {
+  const body = await parseJsonBody<{
     from?: string;
     to?: string;
-  };
+  }>(c);
   const from = (body.from || "").toString();
   const to = (body.to || "Competitor").toString().slice(0, 100);
   if (!from) return c.json({ error: "missing from" }, 400);
@@ -310,7 +293,7 @@ schedules.post("/schedules/:id/entrants/reassign-role", requireCsrf, async (c) =
 schedules.put("/schedules/:id/entrants/:pid/name", requireCsrf, async (c) => {
   const id = c.req.param("id");
   const pid = c.req.param("pid");
-  const body = (await c.req.json().catch(() => ({}))) as { name?: string };
+  const body = await parseJsonBody<{ name?: string }>(c);
   const name = (body.name ?? "").toString().trim().slice(0, 200) || null;
   if (!setEntrantName(db, id, pid, name)) {
     return c.json({ error: "entrant not found" }, 404);
@@ -321,10 +304,10 @@ schedules.put("/schedules/:id/entrants/:pid/name", requireCsrf, async (c) => {
 // Add a manual entrant (a player not registered on start.gg).
 schedules.post("/schedules/:id/entrants", requireCsrf, async (c) => {
   const id = c.req.param("id");
-  const body = (await c.req.json().catch(() => ({}))) as {
+  const body = await parseJsonBody<{
     name?: string;
     role?: string;
-  };
+  }>(c);
   const name = (body.name ?? "").toString().trim().slice(0, 200);
   if (!name) return c.json({ error: "name required" }, 400);
   const role = (body.role || "Competitor").toString().slice(0, 100);

@@ -1,18 +1,15 @@
-import { Hono, type Context } from "hono";
+import { Hono } from "hono";
 import { type AppEnv, requireAuth } from "../auth/session.js";
 import { getStartggAccessToken } from "../auth/startgg-token.js";
 import {
   fetchTournamentEvents,
   StartggApiError,
 } from "../startgg/tournament.js";
+import { userId } from "./shared.js";
 
 const startgg = new Hono<AppEnv>();
 
 startgg.use("/startgg/*", requireAuth);
-
-function userId(c: Context<AppEnv>): string {
-  return c.get("user")!.id;
-}
 
 // Look up a tournament's events (for the editor's per-block event dropdowns).
 // Runs as the signed-in user via their stored start.gg token.

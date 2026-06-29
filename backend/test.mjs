@@ -60,6 +60,7 @@ const res = spawnSync(
       ...process.env,
       SESSION_SECRET: "test-secret-for-unit-tests",
       DATA_DIR: testEnvDir,
+      SCHEDGG_TEST: "1",
     },
   },
 );
