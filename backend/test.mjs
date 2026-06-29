@@ -1,10 +1,13 @@
 // Bundle the TypeScript tests with esbuild (so `.js` import specifiers resolve
 // to `.ts`, matching the build), then run them with node's built-in test runner.
 import * as esbuild from "esbuild";
-import { readdirSync, mkdtempSync } from "node:fs";
+import { readdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const entries = readdirSync("test")
   .filter((f) => f.endsWith(".test.ts"))
@@ -17,6 +20,12 @@ if (entries.length === 0) {
 
 const outdir = mkdtempSync(join(tmpdir(), "sgg-test-"));
 
+// Tests need an isolated DATA_DIR so they don't create ~/.local/share/sched.gg
+// or open the real sched.db. The in-memory DB is injected via setTestDb().
+const testEnvDir = mkdtempSync(join(tmpdir(), "sgg-env-"));
+process.env.DATA_DIR = testEnvDir;
+process.env.SESSION_SECRET = "test-secret-for-unit-tests";
+
 await esbuild.build({
   entryPoints: entries,
   bundle: true,
@@ -24,11 +33,18 @@ await esbuild.build({
   format: "esm",
   target: "node24",
   outdir,
-  // Native modules can't be bundled; tests don't use them, but keep it safe.
   external: ["@napi-rs/canvas"],
   banner: {
     js: 'import { createRequire as __cr } from "node:module"; const require = __cr(import.meta.url);',
   },
+  plugins: [{
+    name: "napi-stub",
+    setup(build) {
+      build.onResolve({ filter: /^@napi-rs\/canvas$/ }, () => ({
+        path: join(__dirname, "test", "napi-stub.js"),
+      }));
+    },
+  }],
 });
 
 const files = readdirSync(outdir)
@@ -43,6 +59,7 @@ const res = spawnSync(
     env: {
       ...process.env,
       SESSION_SECRET: "test-secret-for-unit-tests",
+      DATA_DIR: testEnvDir,
     },
   },
 );
