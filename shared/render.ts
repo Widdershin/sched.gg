@@ -14,6 +14,12 @@ export const THEME = {
   muted: "#8c95ad",
   title: "#ffffff",
   font: "'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif",
+  bannerColor: "#7c8699",
+  blockFillAlpha: 0.20,
+  blockStrokeAlpha: 0.85,
+  laneBgAlpha: 0.02,
+  watermarkAlpha: 0.22,
+  badgeTextColor: "#0e1220", // matches bg for contrast on accent fill
 };
 
 export const LAYOUT = {
@@ -27,9 +33,9 @@ export const LAYOUT = {
   dayGap: 40,
   pxPerMin: 3.2,
   blockRadius: 10,
+  blockBorderWidth: 1.5,
+  gridLineWidth: 1.0,
 };
-
-const BANNER_COLOR = "#7c8699";
 
 // --- Types -------------------------------------------------------------------
 
@@ -239,11 +245,11 @@ function drawBlock(
     ctx.globalAlpha = 0.7;
   }
 
-  ctx.fillStyle = hexToRgba(accent, opts.highlighted ? 0.32 : 0.2);
+  ctx.fillStyle = hexToRgba(accent, THEME.blockFillAlpha);
   roundRect(ctx, x, y, w, h, LAYOUT.blockRadius);
   ctx.fill();
-  ctx.strokeStyle = hexToRgba(accent, 0.85);
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = hexToRgba(accent, THEME.blockStrokeAlpha);
+  ctx.lineWidth = LAYOUT.blockBorderWidth;
   roundRect(ctx, x, y, w, h, LAYOUT.blockRadius);
   ctx.stroke();
 
@@ -317,7 +323,7 @@ function drawBlock(
         const label = ellipsize(ctx, text, avail);
         const labelW = ctx.measureText(label).width;
         const badgeW = padL + icon + gap + labelW + padR;
-        const fg = idx === 0 ? "#0e1220" : accent;
+        const fg = idx === 0 ? THEME.badgeTextColor : accent;
         if (idx === 0) {
           ctx.fillStyle = accent;
           roundRect(ctx, lbx, lby, badgeW, badgeH, 11);
@@ -325,7 +331,7 @@ function drawBlock(
         } else {
           roundRect(ctx, lbx, lby, badgeW, badgeH, 11);
           ctx.strokeStyle = accent;
-          ctx.lineWidth = 1.5;
+          ctx.lineWidth = LAYOUT.blockBorderWidth;
           ctx.stroke();
         }
         const glyph = twitchGlyph(ctx, fg, icon);
@@ -385,7 +391,7 @@ function drawDaySection(
   ticks.forEach((t, idx) => {
     const gx = minutesToX(t);
     ctx.strokeStyle = THEME.grid;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = LAYOUT.gridLineWidth;
     ctx.beginPath();
     ctx.moveTo(gx, headerTop + 20);
     ctx.lineTo(gx, lanesBottom);
@@ -427,7 +433,7 @@ function drawDaySection(
   }
   day.lanes.forEach((_, i) => {
     const laneY = lanesTop + i * (LAYOUT.laneH + LAYOUT.laneGap);
-    ctx.fillStyle = hexToRgba("#ffffff", 0.02);
+    ctx.fillStyle = hexToRgba(THEME.text, THEME.laneBgAlpha);
     roundRect(ctx, gridLeft, laneY, section.trackW, LAYOUT.laneH, 8);
     ctx.fill();
   });
@@ -441,7 +447,7 @@ function drawDaySection(
       lanesTop + INSET,
       bw,
       lanesBottom - lanesTop - INSET * 2,
-      BANNER_COLOR,
+      THEME.bannerColor,
       { center: true, hideEnd: true },
       twitchGlyph,
     );
@@ -553,7 +559,7 @@ export function renderScheduleToContext(
   if (watermark) {
     const wmMargin = LAYOUT.pad / 2 - 8;
     ctx.font = `600 15px ${THEME.font}`;
-    ctx.fillStyle = hexToRgba("#ffffff", 0.22);
+    ctx.fillStyle = hexToRgba(THEME.text, THEME.watermarkAlpha);
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
     ctx.fillText("sched.gg", W - wmMargin, H - wmMargin);
