@@ -284,6 +284,21 @@ export default function Preview({ schedule, update, output, setOutput, visuals, 
               unit="px"
               onChange={(v) => setVisuals((prev) => ({ ...prev, laneH: v }))}
             />
+            <SliderControl
+              label="Scale"
+              value={visuals.pxPerMin ?? 3.2}
+              min={1.0}
+              max={8.0}
+              onChange={(v) => setVisuals((prev) => ({ ...prev, pxPerMin: v }))}
+            />
+            <SliderControl
+              label="Padding"
+              value={visuals.pad ?? 48}
+              min={16}
+              max={100}
+              unit="px"
+              onChange={(v) => setVisuals((prev) => ({ ...prev, pad: v }))}
+            />
           </>
         )}
         <label className="scale-field push-right">
