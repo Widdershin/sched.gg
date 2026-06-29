@@ -162,5 +162,4 @@ export interface VisualSettings {
   blockTimeSize?: number;
   dayNameSize?: number;
   timeLabelSize?: number;
-  orientation?: "horizontal" | "vertical";
 }
