@@ -126,6 +126,26 @@ export const api = {
       `/schedules/${scheduleId}/entrants/reassign-role`,
       { from, to },
     ),
+  setEntrantName: (scheduleId: string, pid: string, name: string) =>
+    request<{ ok: true }>(
+      "PUT",
+      `/schedules/${scheduleId}/entrants/${encodeURIComponent(pid)}/name`,
+      { name },
+    ),
+  addManualEntrant: (
+    scheduleId: string,
+    payload: { name: string; role?: string },
+  ) =>
+    request<{ entrant: Entrant }>(
+      "POST",
+      `/schedules/${scheduleId}/entrants`,
+      payload,
+    ),
+  deleteEntrant: (scheduleId: string, pid: string) =>
+    request<{ ok: true }>(
+      "DELETE",
+      `/schedules/${scheduleId}/entrants/${encodeURIComponent(pid)}`,
+    ),
 
   // Logo endpoints (binary, not JSON).
   uploadLogo: async (id: string, blob: Blob) => {

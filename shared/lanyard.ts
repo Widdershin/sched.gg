@@ -2,6 +2,7 @@
 // on-screen stage and the PNG exporter so the two can't diverge.
 import { uid } from "./model.js";
 import type {
+  Entrant,
   LanyardDesign,
   LanyardElement,
   LanyardElementType,
@@ -11,6 +12,11 @@ import type {
 const CARD_BG = "#0e1220";
 
 export const DEFAULT_ROLE = "Competitor";
+
+// Display name for an entrant: the custom override if set, else the gamerTag.
+export function entrantName(e: Pick<Entrant, "name" | "gamerTag">): string {
+  return e.name?.trim() || e.gamerTag;
+}
 
 export function mmToPx(mm: number, dpi: number): number {
   return Math.round((mm * dpi) / 25.4);

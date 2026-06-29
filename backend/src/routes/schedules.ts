@@ -242,21 +242,31 @@ interface EntrantRow {
   gamer_tag: string | null;
   event_ids: string;
   role: string | null;
+  custom_name: string | null;
+  source: string | null;
+}
+
+function rowToEntrant(r: EntrantRow): Entrant {
+  return {
+    id: r.participant_id,
+    gamerTag: r.gamer_tag ?? "",
+    eventIds: JSON.parse(r.event_ids) as string[],
+    role: r.role ?? "Competitor",
+    name: r.custom_name ?? undefined,
+    source: r.source === "manual" ? "manual" : "startgg",
+  };
 }
 
 function readEntrants(scheduleId: string): Entrant[] {
   const rows = db
     .prepare(
-      `SELECT participant_id, gamer_tag, event_ids, role FROM schedule_entrants
-        WHERE schedule_id = ? ORDER BY gamer_tag COLLATE NOCASE`,
+      `SELECT participant_id, gamer_tag, event_ids, role, custom_name, source
+         FROM schedule_entrants
+        WHERE schedule_id = ?
+        ORDER BY COALESCE(NULLIF(custom_name, ''), gamer_tag) COLLATE NOCASE`,
     )
     .all(scheduleId) as unknown as EntrantRow[];
-  return rows.map((r) => ({
-    id: r.participant_id,
-    gamerTag: r.gamer_tag ?? "",
-    eventIds: JSON.parse(r.event_ids) as string[],
-    role: r.role ?? "Competitor",
-  }));
+  return rows.map(rowToEntrant);
 }
 
 // Persisted entrants for a schedule.
@@ -308,8 +318,8 @@ schedules.post("/schedules/:id/entrants/sync", requireCsrf, async (c) => {
     // re-fetch never collides on (schedule_id, participant_id).
     const upsert = db.prepare(
       `INSERT INTO schedule_entrants
-         (id, schedule_id, participant_id, gamer_tag, event_ids, role, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'Competitor', ?)
+         (id, schedule_id, participant_id, gamer_tag, event_ids, role, source, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'Competitor', 'startgg', ?)
        ON CONFLICT (schedule_id, participant_id) DO UPDATE SET
          gamer_tag = excluded.gamer_tag,
          event_ids = excluded.event_ids,
@@ -318,9 +328,10 @@ schedules.post("/schedules/:id/entrants/sync", requireCsrf, async (c) => {
     for (const e of entrants) {
       upsert.run(uuid(), id, e.id, e.gamerTag, JSON.stringify(e.eventIds), now);
     }
-    // Remove entrants no longer in the tournament (anything not touched this sync).
+    // Remove start.gg entrants no longer in the tournament. Manual entrants are
+    // never pruned by a sync.
     db.prepare(
-      "DELETE FROM schedule_entrants WHERE schedule_id = ? AND updated_at < ?",
+      "DELETE FROM schedule_entrants WHERE schedule_id = ? AND updated_at < ? AND source = 'startgg'",
     ).run(id, now);
     db.prepare("UPDATE schedules SET entrants_synced_at = ? WHERE id = ?").run(
       now,
@@ -373,6 +384,75 @@ schedules.post("/schedules/:id/entrants/reassign-role", requireCsrf, async (c) =
   db.prepare(
     "UPDATE schedule_entrants SET role = ?, updated_at = ? WHERE schedule_id = ? AND role = ?",
   ).run(to, Date.now(), id, from);
+  return c.json({ ok: true });
+});
+
+// Set (or clear) a custom display name for a single entrant.
+schedules.put("/schedules/:id/entrants/:pid/name", requireCsrf, async (c) => {
+  const id = c.req.param("id");
+  const pid = c.req.param("pid");
+  const owned = db
+    .prepare("SELECT id FROM schedules WHERE id = ? AND user_id = ?")
+    .get(id, userId(c));
+  if (!owned) return c.json({ error: "not found" }, 404);
+
+  const body = (await c.req.json().catch(() => ({}))) as { name?: string };
+  const name = (body.name ?? "").toString().trim().slice(0, 200) || null;
+  const res = db
+    .prepare(
+      "UPDATE schedule_entrants SET custom_name = ?, updated_at = ? WHERE schedule_id = ? AND participant_id = ?",
+    )
+    .run(name, Date.now(), id, pid);
+  if (res.changes === 0) return c.json({ error: "entrant not found" }, 404);
+  return c.json({ ok: true });
+});
+
+// Add a manual entrant (a player not registered on start.gg).
+schedules.post("/schedules/:id/entrants", requireCsrf, async (c) => {
+  const id = c.req.param("id");
+  const owned = db
+    .prepare("SELECT id FROM schedules WHERE id = ? AND user_id = ?")
+    .get(id, userId(c));
+  if (!owned) return c.json({ error: "not found" }, 404);
+
+  const body = (await c.req.json().catch(() => ({}))) as {
+    name?: string;
+    role?: string;
+  };
+  const name = (body.name ?? "").toString().trim().slice(0, 200);
+  if (!name) return c.json({ error: "name required" }, 400);
+  const role = (body.role || "Competitor").toString().slice(0, 100);
+  const pid = `manual-${uuid()}`;
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO schedule_entrants
+       (id, schedule_id, participant_id, gamer_tag, event_ids, role, source, updated_at)
+     VALUES (?, ?, ?, ?, '[]', ?, 'manual', ?)`,
+  ).run(uuid(), id, pid, name, role, now);
+  const row = db
+    .prepare(
+      `SELECT participant_id, gamer_tag, event_ids, role, custom_name, source
+         FROM schedule_entrants WHERE schedule_id = ? AND participant_id = ?`,
+    )
+    .get(id, pid) as unknown as EntrantRow;
+  return c.json({ entrant: rowToEntrant(row) });
+});
+
+// Delete a manual entrant (start.gg entrants would return on the next sync).
+schedules.delete("/schedules/:id/entrants/:pid", requireCsrf, (c) => {
+  const id = c.req.param("id");
+  const pid = c.req.param("pid");
+  const owned = db
+    .prepare("SELECT id FROM schedules WHERE id = ? AND user_id = ?")
+    .get(id, userId(c));
+  if (!owned) return c.json({ error: "not found" }, 404);
+
+  const res = db
+    .prepare(
+      "DELETE FROM schedule_entrants WHERE schedule_id = ? AND participant_id = ? AND source = 'manual'",
+    )
+    .run(id, pid);
+  if (res.changes === 0) return c.json({ error: "manual entrant not found" }, 404);
   return c.json({ ok: true });
 });
 

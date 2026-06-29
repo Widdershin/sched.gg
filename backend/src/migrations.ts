@@ -118,6 +118,13 @@ const MIGRATIONS: Migration[] = [
     version: 6,
     sql: `ALTER TABLE schedule_entrants ADD COLUMN role TEXT NOT NULL DEFAULT 'Competitor';`,
   },
+  {
+    version: 7,
+    sql: `
+      ALTER TABLE schedule_entrants ADD COLUMN custom_name TEXT;
+      ALTER TABLE schedule_entrants ADD COLUMN source TEXT NOT NULL DEFAULT 'startgg';
+    `,
+  },
 ];
 
 function migrateExistingLogos(db: DatabaseSync): void {

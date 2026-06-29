@@ -7,6 +7,7 @@ import {
 } from "react";
 import {
   elementRect,
+  entrantName,
   makeElement,
   sidePixels,
   type ElementRectOpts,
@@ -92,7 +93,7 @@ export default function LanyardDesigner({
   const currentSide = design[side];
   const aspect = design.widthMm / design.heightMm;
   const stageW = STAGE_H * aspect;
-  const tag = selectedEntrant?.gamerTag ?? "";
+  const tag = selectedEntrant ? entrantName(selectedEntrant) : "";
   const role = selectedEntrant?.role ?? "Competitor";
   const roleImages = design.roleImages ?? {};
 

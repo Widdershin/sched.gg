@@ -70,8 +70,8 @@ export async function fetchTournamentEvents(
 
 const PER_PAGE = 64;
 
-// start.gg participants carry no role — the role is assigned/persisted locally.
-export type FetchedParticipant = Omit<Entrant, "role">;
+// start.gg participants carry no role/name/source — those are assigned locally.
+export type FetchedParticipant = Omit<Entrant, "role" | "name" | "source">;
 
 export async function fetchTournamentParticipants(
   accessToken: string,

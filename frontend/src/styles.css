@@ -896,3 +896,19 @@ select option {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Selected player editor (lanyards) */
+.selected-player {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.selected-player input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
