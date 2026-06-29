@@ -11,7 +11,7 @@ export interface TokenSet {
   expiresIn: number | null; // seconds until the access token expires
 }
 
-function parseTokenResponse(raw: unknown): TokenSet {
+export function parseTokenResponse(raw: unknown): TokenSet {
   const json = (raw ?? {}) as {
     access_token?: string;
     refresh_token?: string;

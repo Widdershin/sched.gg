@@ -38,6 +38,12 @@ const files = readdirSync(outdir)
 const res = spawnSync(
   process.execPath,
   ["--test", "--experimental-sqlite", ...files],
-  { stdio: "inherit" },
+  {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      SESSION_SECRET: "test-secret-for-unit-tests",
+    },
+  },
 );
 process.exit(res.status ?? 1);

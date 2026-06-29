@@ -24,14 +24,14 @@ export interface AppEnv {
   };
 }
 
-function sign(value: string): string {
+export function sign(value: string): string {
   return crypto
     .createHmac("sha256", env.sessionSecret)
     .update(value)
     .digest("base64url");
 }
 
-function parseSessionCookie(raw: string | undefined): string | null {
+export function parseSessionCookie(raw: string | undefined): string | null {
   if (!raw) return null;
   const dot = raw.lastIndexOf(".");
   if (dot === -1) return null;
