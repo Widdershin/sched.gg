@@ -1,0 +1,28 @@
+name: test
+
+# Run the backend unit tests (node:test, in-memory sqlite) as a Nix check on
+# every push to main and every pull request. The `backend-tests` check only
+# depends on nixpkgs (not the private `fantail` flake input), so it needs no
+# secrets.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Run backend tests
+        run: nix build --print-build-logs '.#checks.x86_64-linux.backend-tests'

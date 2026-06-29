@@ -2,7 +2,7 @@
 // into a single zip, entirely client-side (keeps load off the backend machine and
 // reuses the already-loaded fonts + Twitch icon).
 import { zip } from "fflate";
-import { sidePixels } from "../../shared/lanyard.js";
+import { entrantName, sidePixels } from "../../shared/lanyard.js";
 import {
   preloadImages,
   renderEntrantSchedule,
@@ -101,13 +101,13 @@ export async function generateLanyardsZip(opts: GenerateOpts): Promise<void> {
     );
     const assets = {
       scheduleImg,
-      tag: entrant.gamerTag,
+      tag: entrantName(entrant),
       role: entrant.role,
       roleImages: design.roleImages ?? {},
       images,
     };
 
-    let base = safeName(entrant.gamerTag);
+    let base = safeName(entrantName(entrant));
     if (usedNames.has(base)) base = `${base}-${entrant.id}`;
     usedNames.add(base);
 

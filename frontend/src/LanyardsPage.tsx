@@ -3,7 +3,7 @@ import { api } from "./api";
 import { useAuth } from "./AuthContext";
 import { generateLanyardsZip } from "./lanyards";
 import LanyardDesigner from "./LanyardDesigner";
-import { defaultDesign } from "../../shared/lanyard.js";
+import { defaultDesign, entrantName } from "../../shared/lanyard.js";
 import { fileToImageDataUrl } from "./images";
 import type { Entrant, LanyardDesign, OutputSettings, Schedule } from "./types";
 
@@ -97,7 +97,7 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return entrants;
-    return entrants.filter((e) => e.gamerTag.toLowerCase().includes(q));
+    return entrants.filter((e) => entrantName(e).toLowerCase().includes(q));
   }, [entrants, search]);
 
   // Apply a mutation to a fresh clone of the schedule (mirrors App.tsx).
@@ -172,11 +172,45 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
   const generateSelected = () => {
     if (!selected) return;
     const name =
-      (selected.gamerTag || "lanyard")
+      entrantName(selected)
         .replace(/[^a-z0-9]+/gi, "-")
         .replace(/^-+|-+$/g, "")
         .toLowerCase() || "lanyard";
     runGenerate([selected], `lanyard-${name}`);
+  };
+
+  // --- Players (custom name + manual entrants) -------------------------------
+  const renameEntrant = (pid: string, name: string) => {
+    if (!scheduleId) return;
+    const clean = name.trim();
+    setEntrants((prev) =>
+      prev.map((e) => (e.id === pid ? { ...e, name: clean || undefined } : e)),
+    );
+    api.setEntrantName(scheduleId, pid, clean).catch((e) => {
+      setActionError(e instanceof Error ? e.message : String(e));
+    });
+  };
+
+  const addPlayer = async (name: string) => {
+    if (!scheduleId) return;
+    const clean = name.trim();
+    if (!clean) return;
+    try {
+      const { entrant } = await api.addManualEntrant(scheduleId, { name: clean });
+      setEntrants((prev) => [...prev, entrant]);
+      setSelectedId(entrant.id);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const deletePlayer = (pid: string) => {
+    if (!scheduleId) return;
+    setEntrants((prev) => prev.filter((e) => e.id !== pid));
+    if (selectedId === pid) setSelectedId(null);
+    api.deleteEntrant(scheduleId, pid).catch((e) => {
+      setActionError(e instanceof Error ? e.message : String(e));
+    });
   };
 
   // --- Roles -----------------------------------------------------------------
@@ -319,6 +353,14 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
                 onUpload={setRoleImage}
                 onClear={clearRoleImage}
               />
+              <AddPlayerForm onAdd={addPlayer} />
+              {selected && (
+                <SelectedPlayerEditor
+                  entrant={selected}
+                  onRename={renameEntrant}
+                  onDelete={deletePlayer}
+                />
+              )}
               <input
                 className="startgg-slug"
                 style={{ width: "100%", margin: "8px 0" }}
@@ -326,15 +368,18 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              <ul style={{ listStyle: "none", margin: 0, padding: 0, maxHeight: "60vh", overflow: "auto" }}>
+              <ul style={{ listStyle: "none", margin: 0, padding: 0, maxHeight: "55vh", overflow: "auto" }}>
                 {filtered.map((e) => (
                   <li key={e.id} className="entrant-row">
                     <button
                       className={`btn ghost entrant-pick${e.id === selectedId ? " active" : ""}`}
                       onClick={() => setSelectedId(e.id)}
+                      title={e.source === "manual" ? "Manually added" : undefined}
                     >
-                      {e.gamerTag || "(no tag)"}{" "}
-                      <span className="startgg-hint">· {e.eventIds.length}</span>
+                      {entrantName(e) || "(no name)"}{" "}
+                      <span className="startgg-hint">
+                        {e.source === "manual" ? "· manual" : `· ${e.eventIds.length}`}
+                      </span>
                     </button>
                     <select
                       className="role-select"
@@ -369,6 +414,75 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
         </>
       )}
     </Shell>
+  );
+}
+
+function AddPlayerForm({ onAdd }: { onAdd: (name: string) => void }) {
+  const [name, setName] = useState("");
+  const submit = () => {
+    onAdd(name);
+    setName("");
+  };
+  return (
+    <div className="role-add" style={{ marginBottom: 8 }}>
+      <input
+        className="startgg-slug"
+        placeholder="Add a player (name)…"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") submit();
+        }}
+      />
+      <button className="btn ghost" onClick={submit} disabled={!name.trim()}>
+        Add player
+      </button>
+    </div>
+  );
+}
+
+function SelectedPlayerEditor({
+  entrant,
+  onRename,
+  onDelete,
+}: {
+  entrant: Entrant;
+  onRename: (pid: string, name: string) => void;
+  onDelete: (pid: string) => void;
+}) {
+  // Local input so typing is smooth; commit on blur / Enter.
+  const [value, setValue] = useState(entrant.name ?? "");
+  useEffect(() => setValue(entrant.name ?? ""), [entrant.id, entrant.name]);
+  const commit = () => {
+    if ((value.trim() || undefined) !== (entrant.name ?? undefined)) {
+      onRename(entrant.id, value);
+    }
+  };
+  return (
+    <div className="selected-player">
+      <span className="section-label">Selected player</span>
+      <label className="prop-row">
+        <span>Name</span>
+        <input
+          type="text"
+          value={value}
+          placeholder={entrant.gamerTag || "Custom name"}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+        />
+      </label>
+      {entrant.source === "manual" && (
+        <button
+          className="btn ghost danger"
+          onClick={() => onDelete(entrant.id)}
+        >
+          Delete player
+        </button>
+      )}
+    </div>
   );
 }
 

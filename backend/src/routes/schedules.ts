@@ -1,7 +1,11 @@
 import { Hono, type Context } from "hono";
 import { db } from "../db.js";
 import { uuid, token } from "../util/ids.js";
-import { type AppEnv, requireAuth } from "../auth/session.js";
+import {
+  type AppEnv,
+  requireAuth,
+  requireScheduleOwner,
+} from "../auth/session.js";
 import { requireCsrf } from "../auth/csrf.js";
 import { renderScheduleToPng } from "../render.js";
 import { getStartggAccessToken } from "../auth/startgg-token.js";
@@ -10,13 +14,25 @@ import {
   StartggApiError,
   type FetchedParticipant,
 } from "../startgg/tournament.js";
-import type { Schedule, OutputSettings, Entrant } from "../../../shared/types.js";
+import {
+  readEntrants,
+  reconcileEntrants,
+  addManualEntrant,
+  setEntrantRole,
+  setEntrantName,
+  deleteManualEntrant,
+  reassignRole,
+} from "../entrants-store.js";
+import type { Schedule, OutputSettings } from "../../../shared/types.js";
 
 const schedules = new Hono<AppEnv>();
 
 // All schedule routes require a signed-in user.
 schedules.use("/schedules", requireAuth);
 schedules.use("/schedules/*", requireAuth);
+// Ownership is enforced once here for every /schedules/:id... route.
+schedules.use("/schedules/:id", requireScheduleOwner);
+schedules.use("/schedules/:id/*", requireScheduleOwner);
 
 function userId(c: Context<AppEnv>): string {
   return c.get("user")!.id;
@@ -81,11 +97,6 @@ schedules.get("/schedules/:id", (c) => {
 // Update a schedule (autosave target). Any of name/data/output may be present.
 schedules.put("/schedules/:id", requireCsrf, async (c) => {
   const id = c.req.param("id");
-  const owned = db
-    .prepare("SELECT id FROM schedules WHERE id = ? AND user_id = ?")
-    .get(id, userId(c));
-  if (!owned) return c.json({ error: "not found" }, 404);
-
   const body = (await c.req.json().catch(() => ({}))) as {
     name?: string;
     data?: unknown;
@@ -130,10 +141,6 @@ schedules.delete("/schedules/:id", requireCsrf, (c) => {
 // Create a public share token for a schedule.
 schedules.post("/schedules/:id/share", requireCsrf, (c) => {
   const id = c.req.param("id");
-  const owned = db
-    .prepare("SELECT id FROM schedules WHERE id = ? AND user_id = ?")
-    .get(id, userId(c));
-  if (!owned) return c.json({ error: "not found" }, 404);
   const t = token(18);
   db.prepare(
     `INSERT INTO share_tokens (token, schedule_id, created_at, expires_at, revoked)
@@ -145,11 +152,6 @@ schedules.post("/schedules/:id/share", requireCsrf, (c) => {
 // Logo upload — raw PNG bytes, max 1 MB.
 schedules.put("/schedules/:id/logo", requireCsrf, async (c) => {
   const id = c.req.param("id");
-  const owned = db
-    .prepare("SELECT id FROM schedules WHERE id = ? AND user_id = ?")
-    .get(id, userId(c));
-  if (!owned) return c.json({ error: "not found" }, 404);
-
   const buf = Buffer.from(await c.req.arrayBuffer());
   if (buf.length === 0 || buf.length > 1_000_000) {
     return c.json({ error: "invalid body" }, 400);
@@ -166,11 +168,6 @@ schedules.put("/schedules/:id/logo", requireCsrf, async (c) => {
 // Logo deletion.
 schedules.delete("/schedules/:id/logo", requireCsrf, (c) => {
   const id = c.req.param("id");
-  const owned = db
-    .prepare("SELECT id FROM schedules WHERE id = ? AND user_id = ?")
-    .get(id, userId(c));
-  if (!owned) return c.json({ error: "not found" }, 404);
-
   const now = Date.now();
   db.prepare("UPDATE schedules SET logo = NULL, version = version + 1, rendered_image = NULL, updated_at = ? WHERE id = ?").run(
     now,
@@ -237,38 +234,16 @@ schedules.get("/schedules/:id/image", async (c) => {
 
 // --- Tournament entrants (start.gg) ----------------------------------------
 
-interface EntrantRow {
-  participant_id: string;
-  gamer_tag: string | null;
-  event_ids: string;
-  role: string | null;
-}
-
-function readEntrants(scheduleId: string): Entrant[] {
-  const rows = db
-    .prepare(
-      `SELECT participant_id, gamer_tag, event_ids, role FROM schedule_entrants
-        WHERE schedule_id = ? ORDER BY gamer_tag COLLATE NOCASE`,
-    )
-    .all(scheduleId) as unknown as EntrantRow[];
-  return rows.map((r) => ({
-    id: r.participant_id,
-    gamerTag: r.gamer_tag ?? "",
-    eventIds: JSON.parse(r.event_ids) as string[],
-    role: r.role ?? "Competitor",
-  }));
-}
-
 // Persisted entrants for a schedule.
 schedules.get("/schedules/:id/entrants", (c) => {
   const id = c.req.param("id");
   const row = db
-    .prepare(
-      "SELECT entrants_synced_at FROM schedules WHERE id = ? AND user_id = ?",
-    )
-    .get(id, userId(c)) as { entrants_synced_at: number | null } | undefined;
-  if (!row) return c.json({ error: "not found" }, 404);
-  return c.json({ entrants: readEntrants(id), syncedAt: row.entrants_synced_at });
+    .prepare("SELECT entrants_synced_at FROM schedules WHERE id = ?")
+    .get(id) as { entrants_synced_at: number | null } | undefined;
+  return c.json({
+    entrants: readEntrants(db, id),
+    syncedAt: row?.entrants_synced_at ?? null,
+  });
 });
 
 // Fetch entrants from start.gg and persist them (full replace), so the lanyards
@@ -301,68 +276,25 @@ schedules.post("/schedules/:id/entrants/sync", requireCsrf, async (c) => {
   }
 
   const now = Date.now();
-  db.exec("BEGIN");
-  try {
-    // Upsert: existing entrants keep their assigned role (only tag/events/
-    // updated_at refresh); new ones default to Competitor. Idempotent, so a
-    // re-fetch never collides on (schedule_id, participant_id).
-    const upsert = db.prepare(
-      `INSERT INTO schedule_entrants
-         (id, schedule_id, participant_id, gamer_tag, event_ids, role, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'Competitor', ?)
-       ON CONFLICT (schedule_id, participant_id) DO UPDATE SET
-         gamer_tag = excluded.gamer_tag,
-         event_ids = excluded.event_ids,
-         updated_at = excluded.updated_at`,
-    );
-    for (const e of entrants) {
-      upsert.run(uuid(), id, e.id, e.gamerTag, JSON.stringify(e.eventIds), now);
-    }
-    // Remove entrants no longer in the tournament (anything not touched this sync).
-    db.prepare(
-      "DELETE FROM schedule_entrants WHERE schedule_id = ? AND updated_at < ?",
-    ).run(id, now);
-    db.prepare("UPDATE schedules SET entrants_synced_at = ? WHERE id = ?").run(
-      now,
-      id,
-    );
-    db.exec("COMMIT");
-  } catch (err) {
-    db.exec("ROLLBACK");
-    throw err;
-  }
-
-  return c.json({ entrants: readEntrants(id), syncedAt: now });
+  reconcileEntrants(db, id, entrants, now);
+  return c.json({ entrants: readEntrants(db, id), syncedAt: now });
 });
 
 // Assign a role to a single entrant.
 schedules.put("/schedules/:id/entrants/:pid/role", requireCsrf, async (c) => {
   const id = c.req.param("id");
   const pid = c.req.param("pid");
-  const owned = db
-    .prepare("SELECT id FROM schedules WHERE id = ? AND user_id = ?")
-    .get(id, userId(c));
-  if (!owned) return c.json({ error: "not found" }, 404);
-
   const body = (await c.req.json().catch(() => ({}))) as { role?: string };
   const role = (body.role || "Competitor").toString().slice(0, 100);
-  const res = db
-    .prepare(
-      "UPDATE schedule_entrants SET role = ?, updated_at = ? WHERE schedule_id = ? AND participant_id = ?",
-    )
-    .run(role, Date.now(), id, pid);
-  if (res.changes === 0) return c.json({ error: "entrant not found" }, 404);
+  if (!setEntrantRole(db, id, pid, role)) {
+    return c.json({ error: "entrant not found" }, 404);
+  }
   return c.json({ ok: true });
 });
 
 // Bulk reassign all entrants of one role to another (used when deleting a role).
 schedules.post("/schedules/:id/entrants/reassign-role", requireCsrf, async (c) => {
   const id = c.req.param("id");
-  const owned = db
-    .prepare("SELECT id FROM schedules WHERE id = ? AND user_id = ?")
-    .get(id, userId(c));
-  if (!owned) return c.json({ error: "not found" }, 404);
-
   const body = (await c.req.json().catch(() => ({}))) as {
     from?: string;
     to?: string;
@@ -370,9 +302,42 @@ schedules.post("/schedules/:id/entrants/reassign-role", requireCsrf, async (c) =
   const from = (body.from || "").toString();
   const to = (body.to || "Competitor").toString().slice(0, 100);
   if (!from) return c.json({ error: "missing from" }, 400);
-  db.prepare(
-    "UPDATE schedule_entrants SET role = ?, updated_at = ? WHERE schedule_id = ? AND role = ?",
-  ).run(to, Date.now(), id, from);
+  reassignRole(db, id, from, to);
+  return c.json({ ok: true });
+});
+
+// Set (or clear) a custom display name for a single entrant.
+schedules.put("/schedules/:id/entrants/:pid/name", requireCsrf, async (c) => {
+  const id = c.req.param("id");
+  const pid = c.req.param("pid");
+  const body = (await c.req.json().catch(() => ({}))) as { name?: string };
+  const name = (body.name ?? "").toString().trim().slice(0, 200) || null;
+  if (!setEntrantName(db, id, pid, name)) {
+    return c.json({ error: "entrant not found" }, 404);
+  }
+  return c.json({ ok: true });
+});
+
+// Add a manual entrant (a player not registered on start.gg).
+schedules.post("/schedules/:id/entrants", requireCsrf, async (c) => {
+  const id = c.req.param("id");
+  const body = (await c.req.json().catch(() => ({}))) as {
+    name?: string;
+    role?: string;
+  };
+  const name = (body.name ?? "").toString().trim().slice(0, 200);
+  if (!name) return c.json({ error: "name required" }, 400);
+  const role = (body.role || "Competitor").toString().slice(0, 100);
+  return c.json({ entrant: addManualEntrant(db, id, name, role) });
+});
+
+// Delete a manual entrant (start.gg entrants would return on the next sync).
+schedules.delete("/schedules/:id/entrants/:pid", requireCsrf, (c) => {
+  const id = c.req.param("id");
+  const pid = c.req.param("pid");
+  if (!deleteManualEntrant(db, id, pid)) {
+    return c.json({ error: "manual entrant not found" }, 404);
+  }
   return c.json({ ok: true });
 });
 

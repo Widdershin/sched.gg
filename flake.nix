@@ -39,5 +39,32 @@
           };
         };
       });
+
+      # `nix flake check` (and `nix build .#checks.<system>.backend-tests`) runs
+      # the backend unit tests (node:test, bundled with esbuild, in-memory sqlite).
+      checks = forEachSystem (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          # Offline node_modules (helper + hashes) shared with fantail.nix.
+          backendNodeModules = (import ./nix/node-modules.nix { inherit pkgs; }).backend;
+        in
+        {
+          backend-tests =
+            pkgs.runCommand "sched-gg-backend-tests"
+              { nativeBuildInputs = [ pkgs.nodejs_24 ]; }
+              ''
+                # Reconstruct the backend/ + shared/ sibling layout the imports expect.
+                cp -r ${./backend} backend
+                cp -r ${./shared} shared
+                chmod -R +w backend
+                ln -s ${backendNodeModules}/node_modules backend/node_modules
+                export HOME="$TMPDIR"
+                cd backend
+                node test.mjs
+                touch $out
+              '';
+        }
+      );
     };
 }

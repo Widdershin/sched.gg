@@ -109,10 +109,12 @@ export interface Schedule {
 // A tournament entrant (start.gg participant) and the events they're in.
 // Persisted server-side per schedule; drives the lanyards page.
 export interface Entrant {
-  id: string; // start.gg participant id
+  id: string; // start.gg participant id, or "manual-<uuid>" for manual entrants
   gamerTag: string;
   eventIds: string[];
   role: string; // assigned role (defaults to "Competitor")
+  name?: string; // custom display-name override
+  source: "startgg" | "manual";
 }
 
 export type AspectMode =
