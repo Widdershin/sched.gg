@@ -7,6 +7,8 @@ import {
   makeDay,
   loadOutputSettings,
   saveOutputSettings,
+  loadVisualSettings,
+  saveVisualSettings,
 } from "./model";
 import Editor from "./Editor";
 import Preview from "./Preview";
@@ -34,6 +36,7 @@ export default function App() {
   const auth = useAuth();
   const [schedule, setSchedule] = useState<Schedule>(loadSchedule);
   const [output, setOutput] = useState(loadOutputSettings);
+  const [visuals, setVisuals] = useState(loadVisualSettings);
   const [activeDayId, setActiveDayId] = useState<string | null>(
     () => schedule.days[0]?.id ?? null,
   );
@@ -56,6 +59,9 @@ export default function App() {
   useEffect(() => {
     saveOutputSettings(output);
   }, [output]);
+  useEffect(() => {
+    saveVisualSettings(visuals);
+  }, [visuals]);
 
   // Load a schedule from the server into the editor.
   const loadScheduleFromServer = async (id: string) => {
@@ -78,7 +84,10 @@ export default function App() {
     }
 
     setSchedule(normalized);
-    if (full.output) setOutput(full.output);
+    if (full.output) {
+      setOutput(full.output);
+      if (full.output.visuals) setVisuals(full.output.visuals);
+    }
     setActiveDayId(full.data.days?.[0]?.id ?? null);
     setCurrentScheduleId(id);
   };
@@ -103,7 +112,7 @@ export default function App() {
           const created = await api.createSchedule({
             name: schedule.title || "My Tournament",
             data: schedule,
-            output,
+        output: { ...output, visuals },
           });
           if (cancelled) return;
           setScheduleList([created]);
@@ -130,7 +139,10 @@ export default function App() {
         delete (clean.logo as unknown as Record<string, unknown>).src;
       }
       api
-        .updateSchedule(currentScheduleId, { data: clean, output })
+        .updateSchedule(currentScheduleId, {
+          data: clean,
+          output: { ...output, visuals },
+        })
         .catch(() => {});
     }, SERVER_SAVE_DEBOUNCE_MS);
     return () => clearTimeout(t);
@@ -444,6 +456,8 @@ export default function App() {
             update={update}
             output={output}
             setOutput={setOutput}
+            visuals={visuals}
+            setVisuals={setVisuals}
             scheduleId={currentScheduleId}
           />
         </section>

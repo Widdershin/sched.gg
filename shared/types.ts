@@ -132,4 +132,34 @@ export interface OutputSettings {
   w: number;
   h: number;
   scale: number;
+  visuals?: VisualSettings | null;
+}
+
+export interface VisualSettings {
+  mode: "default" | "custom";
+  // Colors
+  bg?: string;
+  grid?: string;
+  text?: string;
+  muted?: string;
+  title?: string;
+  bannerColor?: string;
+  laneBgAlpha?: number;
+  blockFillAlpha?: number;
+  blockStrokeAlpha?: number;
+  // Layout
+  pad?: number;
+  laneH?: number;
+  laneGap?: number;
+  dayGap?: number;
+  pxPerMin?: number;
+  blockRadius?: number;
+  blockBorderWidth?: number;
+  gridLineWidth?: number;
+  // Typography
+  font?: string;
+  blockNameSize?: number;
+  blockTimeSize?: number;
+  dayNameSize?: number;
+  timeLabelSize?: number;
 }

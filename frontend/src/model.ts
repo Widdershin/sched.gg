@@ -12,6 +12,7 @@ import type {
   Lane,
   OutputSettings,
   Schedule,
+  VisualSettings,
 } from "../../shared/types.js";
 
 export { uid, parseTime, formatTime, dayTimeRange, LANE_COLORS };
@@ -140,6 +141,28 @@ export function loadOutputSettings(): OutputSettings {
 export function saveOutputSettings(settings: OutputSettings): void {
   try {
     localStorage.setItem(OUTPUT_KEY, JSON.stringify(settings));
+  } catch {
+    // Ignore quota / unavailable storage.
+  }
+}
+
+// --- Visual settings --------------------------------------------------------
+
+const VISUAL_KEY = "sched.gg:visual:v1";
+
+export function loadVisualSettings(): VisualSettings {
+  try {
+    const raw = localStorage.getItem(VISUAL_KEY);
+    if (!raw) return { mode: "default" };
+    return JSON.parse(raw) as VisualSettings;
+  } catch {
+    return { mode: "default" };
+  }
+}
+
+export function saveVisualSettings(settings: VisualSettings): void {
+  try {
+    localStorage.setItem(VISUAL_KEY, JSON.stringify(settings));
   } catch {
     // Ignore quota / unavailable storage.
   }

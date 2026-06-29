@@ -1,10 +1,9 @@
 import {
-  THEME,
-  LAYOUT,
   measureSchedule,
   renderScheduleToContext,
+  resolveLayout,
 } from "../../shared/render.js";
-import type { Schedule } from "../../shared/types.js";
+import type { Schedule, VisualSettings } from "../../shared/types.js";
 import type { Measure, TwitchGlypher } from "../../shared/render.js";
 
 export { measureSchedule };
@@ -72,9 +71,11 @@ export function renderSchedule(
   aspectRatio: number | null = null,
   logoImg: HTMLImageElement | null = null,
   extra: RenderExtra = {},
+  visuals?: VisualSettings | null,
 ): Measure {
   const hasLogo = schedule.logo != null;
-  const base = measureSchedule(schedule, 1, undefined, hasLogo);
+  const layout = resolveLayout(visuals);
+  const base = measureSchedule(schedule, 1, undefined, hasLogo, layout);
   let hScale = 1;
   let forcedWidth: number | undefined;
   if (aspectRatio && aspectRatio > 0) {
@@ -86,7 +87,7 @@ export function renderSchedule(
       .filter((w) => w > 0);
     if (autoTracks.length > 0) {
       const baseTrackMax = Math.max(...autoTracks);
-      const targetTrack = targetW - LAYOUT.pad * 2 - LAYOUT.gutterW;
+      const targetTrack = targetW - layout.pad * 2 - layout.gutterW;
       hScale = targetTrack / baseTrackMax;
       if (!Number.isFinite(hScale) || hScale <= 0) hScale = 0.05;
     } else {
@@ -96,7 +97,7 @@ export function renderSchedule(
   const m =
     hScale === 1 && forcedWidth == null
       ? base
-      : measureSchedule(schedule, hScale, forcedWidth, hasLogo);
+      : measureSchedule(schedule, hScale, forcedWidth, hasLogo, layout);
 
   const W = m.width;
   const H = m.height;
@@ -117,11 +118,12 @@ export function renderSchedule(
     measure: m,
     W,
     H,
-    titleH: hasLogo ? 0 : LAYOUT.titleH,
+    titleH: hasLogo ? 0 : layout.titleH,
     logoImg,
     twitchGlyph,
     highlightEventIds: extra.highlightEventIds,
     subtitle: extra.subtitle,
+    visuals,
   });
 
   return m;
