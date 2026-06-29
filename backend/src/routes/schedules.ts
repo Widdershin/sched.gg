@@ -300,37 +300,28 @@ schedules.post("/schedules/:id/entrants/sync", requireCsrf, async (c) => {
     return c.json({ error: "start.gg query failed" }, 502);
   }
 
-  // Preserve role assignments across the full replace.
-  const priorRoles = new Map(
-    (
-      db
-        .prepare(
-          "SELECT participant_id, role FROM schedule_entrants WHERE schedule_id = ?",
-        )
-        .all(id) as unknown as { participant_id: string; role: string | null }[]
-    ).map((r) => [r.participant_id, r.role ?? "Competitor"]),
-  );
-
   const now = Date.now();
   db.exec("BEGIN");
   try {
-    db.prepare("DELETE FROM schedule_entrants WHERE schedule_id = ?").run(id);
-    const insert = db.prepare(
+    // Upsert: existing entrants keep their assigned role (only tag/events/
+    // updated_at refresh); new ones default to Competitor. Idempotent, so a
+    // re-fetch never collides on (schedule_id, participant_id).
+    const upsert = db.prepare(
       `INSERT INTO schedule_entrants
          (id, schedule_id, participant_id, gamer_tag, event_ids, role, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, 'Competitor', ?)
+       ON CONFLICT (schedule_id, participant_id) DO UPDATE SET
+         gamer_tag = excluded.gamer_tag,
+         event_ids = excluded.event_ids,
+         updated_at = excluded.updated_at`,
     );
     for (const e of entrants) {
-      insert.run(
-        uuid(),
-        id,
-        e.id,
-        e.gamerTag,
-        JSON.stringify(e.eventIds),
-        priorRoles.get(e.id) ?? "Competitor",
-        now,
-      );
+      upsert.run(uuid(), id, e.id, e.gamerTag, JSON.stringify(e.eventIds), now);
     }
+    // Remove entrants no longer in the tournament (anything not touched this sync).
+    db.prepare(
+      "DELETE FROM schedule_entrants WHERE schedule_id = ? AND updated_at < ?",
+    ).run(id, now);
     db.prepare("UPDATE schedules SET entrants_synced_at = ? WHERE id = ?").run(
       now,
       id,

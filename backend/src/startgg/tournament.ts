@@ -77,7 +77,9 @@ export async function fetchTournamentParticipants(
   accessToken: string,
   slug: string,
 ): Promise<FetchedParticipant[]> {
-  const out: FetchedParticipant[] = [];
+  // Accumulate by participant id, merging event ids — start.gg can return the
+  // same participant more than once (e.g. across page boundaries).
+  const byId = new Map<string, { id: string; gamerTag: string; eventIds: Set<string> }>();
   let page = 1;
   let totalPages = 1;
   do {
@@ -108,21 +110,22 @@ export async function fetchTournamentParticipants(
     if (!t) throw new StartggApiError(`tournament not found: ${slug}`);
     totalPages = t.participants.pageInfo.totalPages || 1;
     for (const node of t.participants.nodes) {
-      const eventIds = Array.from(
-        new Set(
-          (node.entrants ?? [])
-            .map((e) => e.event?.id)
-            .filter((id): id is number => id != null)
-            .map(String),
-        ),
-      );
-      out.push({
-        id: String(node.id),
-        gamerTag: node.gamerTag ?? "",
-        eventIds,
-      });
+      const pid = String(node.id);
+      let entry = byId.get(pid);
+      if (!entry) {
+        entry = { id: pid, gamerTag: node.gamerTag ?? "", eventIds: new Set() };
+        byId.set(pid, entry);
+      }
+      if (!entry.gamerTag && node.gamerTag) entry.gamerTag = node.gamerTag;
+      for (const e of node.entrants ?? []) {
+        if (e.event?.id != null) entry.eventIds.add(String(e.event.id));
+      }
     }
     page += 1;
   } while (page <= totalPages);
-  return out;
+  return Array.from(byId.values()).map((p) => ({
+    id: p.id,
+    gamerTag: p.gamerTag,
+    eventIds: Array.from(p.eventIds),
+  }));
 }
