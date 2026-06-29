@@ -11,18 +11,27 @@ export interface TokenSet {
   expiresIn: number | null; // seconds until the access token expires
 }
 
+interface TokenJson {
+  access_token?: unknown;
+  refresh_token?: unknown;
+  expires_in?: unknown;
+}
+
+function isTokenJson(x: unknown): x is TokenJson {
+  return typeof x === "object" && x !== null && !Array.isArray(x);
+}
+
 export function parseTokenResponse(raw: unknown): TokenSet {
-  const json = (raw ?? {}) as {
-    access_token?: string;
-    refresh_token?: string;
-    expires_in?: number;
-  };
-  if (!json.access_token) {
+  const json = (raw ?? {});
+  if (!isTokenJson(json)) {
+    throw new Error("start.gg token response malformed");
+  }
+  if (!json.access_token || typeof json.access_token !== "string") {
     throw new Error("start.gg token response missing access_token");
   }
   return {
     accessToken: json.access_token,
-    refreshToken: json.refresh_token ?? null,
+    refreshToken: typeof json.refresh_token === "string" ? json.refresh_token : null,
     expiresIn: typeof json.expires_in === "number" ? json.expires_in : null,
   };
 }

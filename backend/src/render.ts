@@ -5,7 +5,7 @@ import {
   renderScheduleToContext,
 } from "../../shared/render.js";
 import type { Schedule, OutputSettings } from "../../shared/types.js";
-import type { TwitchGlypher } from "../../shared/render.js";
+import type { TwitchGlypher, CanvasLike, ImageLike } from "../../shared/render.js";
 import { LAYOUT } from "../../shared/render.js";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,13 +47,13 @@ async function ensureTwitchIcon() {
   twitchReady = true;
 }
 
-const iconCache = new Map<string, object>();
+const iconCache = new Map<string, CanvasLike>();
 const twitchGlyph: TwitchGlypher = (ctx, color, size) => {
   if (!twitchReady || !twitchIcon) return null;
   const px = Math.max(1, Math.round(size));
   const key = `${color}@${px}`;
   const cached = iconCache.get(key);
-  if (cached) return cached as unknown as import("../../shared/render.js").CanvasLike;
+  if (cached) return cached;
   const c = createCanvas(px, px);
   const ic = c.getContext("2d");
   if (!ic) return null;
@@ -62,7 +62,7 @@ const twitchGlyph: TwitchGlypher = (ctx, color, size) => {
   ic.fillStyle = color;
   ic.fillRect(0, 0, px, px);
   iconCache.set(key, c);
-  return c as unknown as import("../../shared/render.js").CanvasLike;
+  return c as CanvasLike;
 };
 
 // --- Render entry point ------------------------------------------------------
@@ -142,7 +142,7 @@ export async function renderScheduleToPng(
     W,
     H,
     titleH: hasLogo ? 0 : LAYOUT.titleH,
-    logoImg: logoImg as unknown as import("../../shared/render.js").ImageLike,
+    logoImg: logoImg as ImageLike,
     twitchGlyph,
   });
 
