@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import type { AppEnv } from "../auth/session.js";
 import { db } from "../db.js";
 import type { Schedule, OutputSettings } from "../../../shared/types.js";
+import { renderScheduleToPng } from "../render.js";
 
 /** Extract the authenticated user's id from the Hono context. */
 export function userId(c: Context<AppEnv>): string {
@@ -37,4 +38,48 @@ export function invalidateScheduleCache(id: string): void {
   db.prepare(
     "UPDATE schedules SET version = version + 1, rendered_image = NULL, updated_at = ? WHERE id = ?",
   ).run(now, id);
+}
+
+/** Render a schedule to PNG, optionally caching the result in the DB. */
+export async function renderScheduleImage(
+  row: { version: number; data: string; output: string | null; logo: Buffer | null; rendered_image: Buffer | null },
+  scheduleId: string,
+  skipCache: boolean,
+): Promise<Buffer> {
+  if (!skipCache && row.rendered_image) return row.rendered_image;
+
+  const { schedule, output } = parseScheduleRow(row);
+  const png = await renderScheduleToPng({
+    schedule,
+    output,
+    logoBytes: row.logo ?? undefined,
+  });
+
+  if (!skipCache) {
+    db.prepare("UPDATE schedules SET rendered_image = ? WHERE id = ?").run(
+      png,
+      scheduleId,
+    );
+  }
+
+  return png;
+}
+
+/** Build a standard image PNG response with ETag + Cache-Control. */
+export function imagePngResponse(png: Buffer, version: number): Response {
+  return new Response(new Uint8Array(png), {
+    status: 200,
+    headers: {
+      "Content-Type": "image/png",
+      "Cache-Control": "public, max-age=3600",
+      "ETag": `"v${version}"`,
+    },
+  });
+}
+
+/** Validate a share token row's revoked/expired status. */
+export function validateShareToken(
+  row: { revoked: number; expires_at: number | null } | undefined,
+): boolean {
+  return !(!row || row.revoked || (row.expires_at != null && row.expires_at < Date.now()));
 }

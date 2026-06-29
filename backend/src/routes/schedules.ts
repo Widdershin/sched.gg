@@ -7,7 +7,6 @@ import {
   requireScheduleOwner,
 } from "../auth/session.js";
 import { requireCsrf } from "../auth/csrf.js";
-import { renderScheduleToPng } from "../render.js";
 import { getStartggAccessToken } from "../auth/startgg-token.js";
 import {
   fetchTournamentParticipants,
@@ -30,6 +29,8 @@ import {
   parseScheduleRow,
   parseJsonBody,
   invalidateScheduleCache,
+  renderScheduleImage,
+  imagePngResponse,
 } from "./shared.js";
 
 const schedules = new Hono<AppEnv>();
@@ -187,34 +188,8 @@ schedules.get("/schedules/:id/image", async (c) => {
   }>(id, "version, data, output, logo, rendered_image");
   if (!row) return c.json({ error: "not found" }, 404);
 
-  // Return cached BLOB if present.
-  if (row.rendered_image) {
-    return c.body(new Uint8Array(row.rendered_image), 200, {
-      "Content-Type": "image/png",
-      "Cache-Control": "public, max-age=3600",
-      "ETag": `"v${row.version}"`,
-    });
-  }
-
-  const { schedule, output } = parseScheduleRow(row);
-
-  const png = await renderScheduleToPng({
-    schedule,
-    output,
-    logoBytes: row.logo ?? undefined,
-  });
-
-  // Store the rendered image for future requests.
-  db.prepare("UPDATE schedules SET rendered_image = ? WHERE id = ?").run(
-      png,
-      id,
-    );
-
-  return c.body(new Uint8Array(png), 200, {
-    "Content-Type": "image/png",
-    "Cache-Control": "public, max-age=3600",
-    "ETag": `"v${row.version}"`,
-  });
+  const png = await renderScheduleImage(row, id, false);
+  return imagePngResponse(png, row.version);
 });
 
 // --- Tournament entrants (start.gg) ----------------------------------------
