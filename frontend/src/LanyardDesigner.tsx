@@ -433,6 +433,12 @@ export default function LanyardDesigner({
 
         {/* Properties */}
         <div className="lanyard-props">
+          <LayersPanel
+            elements={currentSide.elements}
+            selectedId={selectedElId}
+            onSelect={setSelectedElId}
+            onReorder={reorder}
+          />
           <CardSizeControls design={design} update={update} />
           {selectedEl ? (
             <ElementProps
@@ -452,6 +458,83 @@ export default function LanyardDesigner({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function layerLabel(el: LanyardElement): string {
+  switch (el.type) {
+    case "image":
+      return "Image";
+    case "text":
+      return el.text?.trim() ? `Text: ${el.text}` : "Text";
+    case "tag":
+      return "Player tag";
+    case "schedule":
+      return "Schedule";
+    case "roleImage":
+      return "Role image";
+    case "shape":
+      return "Shape";
+    default:
+      return el.type;
+  }
+}
+
+// Layer list: pick elements directly (easier than clicking overlapping boxes)
+// and reorder z-order. Listed front-most first.
+function LayersPanel({
+  elements,
+  selectedId,
+  onSelect,
+  onReorder,
+}: {
+  elements: LanyardElement[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onReorder: (id: string, dir: -1 | 1) => void;
+}) {
+  const top = [...elements].reverse();
+  return (
+    <div className="layers-panel">
+      <span className="section-label">Layers</span>
+      {elements.length === 0 ? (
+        <p className="startgg-hint">No elements yet.</p>
+      ) : (
+        <ul className="layers-list">
+          {top.map((el, i) => (
+            <li
+              key={el.id}
+              className={`layer-row${el.id === selectedId ? " active" : ""}`}
+              onClick={() => onSelect(el.id)}
+            >
+              <span className="layer-name">{layerLabel(el)}</span>
+              <button
+                className="btn icon"
+                title="Bring forward"
+                disabled={i === 0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReorder(el.id, 1);
+                }}
+              >
+                ↑
+              </button>
+              <button
+                className="btn icon"
+                title="Send back"
+                disabled={i === top.length - 1}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReorder(el.id, -1);
+                }}
+              >
+                ↓
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
