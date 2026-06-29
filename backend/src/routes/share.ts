@@ -1,8 +1,11 @@
 import { Hono } from "hono";
 import { db } from "../db.js";
 import type { AppEnv } from "../auth/session.js";
-import { renderScheduleToPng } from "../render.js";
-import type { Schedule, OutputSettings } from "../../../shared/types.js";
+import {
+  renderScheduleImage,
+  imagePngResponse,
+  validateShareToken,
+} from "./shared.js";
 
 const share = new Hono<AppEnv>();
 
@@ -24,13 +27,11 @@ share.get("/share/:token", (c) => {
         output: string | null;
       }
     | undefined;
-  if (!row || row.revoked || (row.expires_at != null && row.expires_at < Date.now())) {
-    return c.json({ error: "not found" }, 404);
-  }
+  if (!validateShareToken(row)) return c.json({ error: "not found" }, 404);
   return c.json({
-    name: row.name,
-    data: JSON.parse(row.data),
-    output: row.output ? JSON.parse(row.output) : null,
+    name: row!.name,
+    data: JSON.parse(row!.data),
+    output: row!.output ? JSON.parse(row!.output) : null,
   });
 });
 
@@ -47,9 +48,7 @@ share.get("/share/:token/logo", (c) => {
     .get(c.req.param("token"), Date.now()) as
     | { logo: Buffer | null }
     | undefined;
-  if (!row || !row.logo) {
-    return c.body(null, 204);
-  }
+  if (!row || !row.logo) return c.body(null, 204);
   return c.body(new Uint8Array(row.logo), 200, { "Content-Type": "image/png" });
 });
 
@@ -74,47 +73,11 @@ share.get("/share/:token/image", async (c) => {
         rendered_image: Buffer | null;
       }
     | undefined;
-  if (
-    !row ||
-    row.revoked ||
-    (row.expires_at != null && row.expires_at < Date.now())
-  ) {
-    return c.json({ error: "not found" }, 404);
-  }
+  if (!validateShareToken(row)) return c.json({ error: "not found" }, 404);
 
   const skipCache = c.req.query("cacheBust") != null;
-
-  // Return cached BLOB if present and not busting.
-  if (!skipCache && row.rendered_image) {
-    return c.body(new Uint8Array(row.rendered_image), 200, {
-      "Content-Type": "image/png",
-      "Cache-Control": "public, max-age=3600",
-      "ETag": `"v${row.version}"`,
-    });
-  }
-
-  const schedule = JSON.parse(row.data) as Schedule;
-  const output = row.output ? (JSON.parse(row.output) as OutputSettings) : null;
-
-  const png = await renderScheduleToPng({
-    schedule,
-    output,
-    logoBytes: row.logo ?? undefined,
-  });
-
-  // Store the rendered image for future requests.
-  if (!skipCache) {
-    db.prepare("UPDATE schedules SET rendered_image = ? WHERE id = ?").run(
-      png,
-      row.schedule_id,
-    );
-  }
-
-  return c.body(new Uint8Array(png), 200, {
-    "Content-Type": "image/png",
-    "Cache-Control": "public, max-age=3600",
-    "ETag": `"v${row.version}"`,
-  });
+  const png = await renderScheduleImage(row!, row!.schedule_id, skipCache);
+  return imagePngResponse(png, row!.version);
 });
 
 export default share;

@@ -12,9 +12,15 @@ function createAndMigrate(path: string): DatabaseSync {
 }
 
 // Mutable export — tests can swap in an in-memory DB via setTestDb().
-export let db: DatabaseSync = createAndMigrate(env.dbPath);
+// In test mode, we skip opening the real DB file entirely.
+export let db: DatabaseSync;
+if (!process.env.SCHEDGG_TEST) {
+  db = createAndMigrate(env.dbPath);
+} else {
+  db = new DatabaseSync(":memory:");
+}
 
-/** Swap the DB instance for testing. Does NOT run migrations — caller must do that. */
+/** Swap the DB instance for testing. */
 export function setTestDb(testDb: DatabaseSync): void {
   db = testDb;
 }

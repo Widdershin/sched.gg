@@ -127,6 +127,17 @@ const MIGRATIONS: Migration[] = [
   },
 ];
 
+interface LogoObject {
+  src?: string;
+  size?: number;
+  x?: number;
+  y?: number;
+}
+
+function isLogoObject(x: unknown): x is LogoObject {
+  return typeof x === "object" && x !== null && !Array.isArray(x);
+}
+
 export function migrateExistingLogos(db: DatabaseSync): void {
   const rows = db
     .prepare("SELECT id, data FROM schedules WHERE data LIKE '%data:image/png;base64,%'")
@@ -138,8 +149,9 @@ export function migrateExistingLogos(db: DatabaseSync): void {
     } catch {
       continue;
     }
-    const logo = parsed.logo as { src?: string; size?: number; x?: number; y?: number } | null | undefined;
-    if (!logo?.src?.startsWith("data:image/png;base64,")) continue;
+    const logo = parsed.logo;
+    if (!isLogoObject(logo)) continue;
+    if (!logo.src?.startsWith("data:image/png;base64,")) continue;
     const base64 = logo.src.slice("data:image/png;base64,".length);
     const buf = Buffer.from(base64, "base64");
     delete logo.src;
