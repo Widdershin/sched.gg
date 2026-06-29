@@ -9,6 +9,7 @@ import {
   setEntrantRole,
   setEntrantName,
   deleteManualEntrant,
+  reassignRole,
 } from "../src/entrants-store.js";
 
 // In-memory DB with the full schema + one schedule row (FK off by default in
@@ -99,4 +100,70 @@ test("readEntrants orders by display name (custom name overrides tag)", () => {
     readEntrants(db, "s1").map((x) => x.id),
     ["A", "B"],
   );
+});
+
+test("reassignRole: bulk reassigns roles", () => {
+  const db = freshDb();
+  reconcileEntrants(
+    db,
+    "s1",
+    [p("A", "Alice", ["1"]), p("B", "Bob", ["2"]), p("C", "Carol", ["3"])],
+    1000,
+  );
+  // Initially all are "Competitor"
+  const before = readEntrants(db, "s1");
+  assert.ok(before.every((x) => x.role === "Competitor"));
+
+  // Reassign all Competitors to "Staff"
+  reassignRole(db, "s1", "Competitor", "Staff");
+
+  const after = readEntrants(db, "s1");
+  assert.equal(after.length, 3);
+  assert.ok(after.every((x) => x.role === "Staff"));
+});
+
+test("reassignRole: only affects specified role", () => {
+  const db = freshDb();
+  reconcileEntrants(db, "s1", [p("A", "Alice"), p("B", "Bob")], 1000);
+  setEntrantRole(db, "s1", "A", "Commentator");
+  // A=Commentator, B=Competitor
+
+  reassignRole(db, "s1", "Competitor", "Staff");
+
+  const e = readEntrants(db, "s1");
+  const byId = Object.fromEntries(e.map((x) => [x.id, x.role]));
+  assert.equal(byId["A"], "Commentator"); // unchanged
+  assert.equal(byId["B"], "Staff"); // reassigned
+});
+
+test("reassignRole: no-op when no entrants match", () => {
+  const db = freshDb();
+  reconcileEntrants(db, "s1", [p("A", "Alice")], 1000);
+  const before = readEntrants(db, "s1");
+
+  reassignRole(db, "s1", "NonexistentRole", "X");
+
+  const after = readEntrants(db, "s1");
+  assert.deepEqual(
+    before.map((x) => [x.id, x.role]),
+    after.map((x) => [x.id, x.role]),
+  );
+});
+
+test("reassignRole: scoped to schedule_id", () => {
+  const db = freshDb();
+  // Create a second schedule
+  db.prepare(
+    "INSERT INTO schedules (id, user_id, name, data, created_at, updated_at, version) VALUES ('s2', 'u1', 't2', '{}', 0, 0, 1)",
+  ).run();
+  reconcileEntrants(db, "s1", [p("A", "Alice")], 1000);
+  reconcileEntrants(db, "s2", [p("B", "Bob")], 1000);
+
+  reassignRole(db, "s1", "Competitor", "Staff");
+
+  // s1 entrant changed, s2 unchanged
+  const e1 = readEntrants(db, "s1");
+  const e2 = readEntrants(db, "s2");
+  assert.deepEqual(e1.map((x) => x.role), ["Staff"]);
+  assert.deepEqual(e2.map((x) => x.role), ["Competitor"]);
 });

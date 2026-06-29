@@ -127,7 +127,7 @@ const MIGRATIONS: Migration[] = [
   },
 ];
 
-function migrateExistingLogos(db: DatabaseSync): void {
+export function migrateExistingLogos(db: DatabaseSync): void {
   const rows = db
     .prepare("SELECT id, data FROM schedules WHERE data LIKE '%data:image/png;base64,%'")
     .all() as { id: string; data: string }[];
