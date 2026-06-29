@@ -102,7 +102,7 @@ schedules.put("/schedules/:id", requireCsrf, async (c) => {
     output?: unknown;
   }>(c);
   const sets: string[] = [];
-  const params: unknown[] = [];
+  const params: (string | number | bigint | Buffer | null)[] = [];
   if (body.name !== undefined) {
     sets.push("name = ?");
     params.push(body.name.toString().slice(0, 200));
@@ -123,7 +123,7 @@ schedules.put("/schedules/:id", requireCsrf, async (c) => {
   params.push(now);
   params.push(id);
   db.prepare(`UPDATE schedules SET ${sets.join(", ")} WHERE id = ?`).run(
-    ...(params as never[]),
+    ...params,
   );
   return c.json({ ok: true, updated_at: now });
 });

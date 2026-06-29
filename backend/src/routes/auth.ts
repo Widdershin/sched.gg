@@ -63,7 +63,7 @@ auth.get("/auth/me", (c) => {
 
 // --- register (username + password) ---------------------------------------
 auth.post("/auth/register", requireCsrf, async (c) => {
-  const { username, password } = await parseJsonBody<any>(c);
+  const { username, password } = await parseJsonBody<Record<string, unknown>>(c);
   if (typeof username !== "string" || username.trim().length < 3) {
     return c.json({ error: "username must be at least 3 characters" }, 400);
   }
@@ -90,7 +90,7 @@ auth.post("/auth/register", requireCsrf, async (c) => {
 
 // --- login (username + password) ------------------------------------------
 auth.post("/auth/login", requireCsrf, async (c) => {
-  const { username, password } = await parseJsonBody<any>(c);
+  const { username, password } = await parseJsonBody<Record<string, unknown>>(c);
   if (typeof username !== "string" || typeof password !== "string") {
     return c.json({ error: "username and password required" }, 400);
   }
@@ -118,7 +118,7 @@ auth.post("/auth/logout", requireCsrf, requireAuth, (c) => {
 // --- dev login (env-gated) -------------------------------------------------
 auth.post("/auth/dev-login", requireCsrf, async (c) => {
   if (!env.devLogin) return c.json({ error: "dev login disabled" }, 404);
-  const { username } = await parseJsonBody<any>(c);
+  const { username } = await parseJsonBody<Record<string, unknown>>(c);
   const name = typeof username === "string" && username.trim() ? username.trim() : "dev";
   let user = db
     .prepare("SELECT id, username, display_name FROM users WHERE username = ?")

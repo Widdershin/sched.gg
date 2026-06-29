@@ -47,7 +47,7 @@ async function ensureTwitchIcon() {
   twitchReady = true;
 }
 
-const iconCache = new Map<string, any>();
+const iconCache = new Map<string, object>();
 const twitchGlyph: TwitchGlypher = (ctx, color, size) => {
   if (!twitchReady || !twitchIcon) return null;
   const px = Math.max(1, Math.round(size));
