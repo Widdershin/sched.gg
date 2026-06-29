@@ -83,3 +83,28 @@ export function validateShareToken(
 ): boolean {
   return !(!row || row.revoked || (row.expires_at != null && row.expires_at < Date.now()));
 }
+
+// --- start.gg helpers ---------------------------------------------------------
+
+import { getStartggAccessToken } from "../auth/startgg-token.js";
+import { StartggApiError } from "../startgg/tournament.js";
+
+/** Fetch the user's start.gg access token, or return null (caller should 409). */
+export async function requireStartggToken(c: Context): Promise<string | null> {
+  return getStartggAccessToken(userId(c));
+}
+
+/** Build a standard error response for start.gg API failures. */
+export function startggErrorResponse(err: unknown, label: string): Response {
+  if (err instanceof StartggApiError && err.forbidden) {
+    return new Response(JSON.stringify({ error: "no access to this tournament" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  console.error(`[startgg] ${label}`, err);
+  return new Response(JSON.stringify({ error: "start.gg query failed" }), {
+    status: 502,
+    headers: { "Content-Type": "application/json" },
+  });
+}

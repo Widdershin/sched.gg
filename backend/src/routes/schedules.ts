@@ -7,10 +7,8 @@ import {
   requireScheduleOwner,
 } from "../auth/session.js";
 import { requireCsrf } from "../auth/csrf.js";
-import { getStartggAccessToken } from "../auth/startgg-token.js";
 import {
   fetchTournamentParticipants,
-  StartggApiError,
   type FetchedParticipant,
 } from "../startgg/tournament.js";
 import {
@@ -31,6 +29,8 @@ import {
   invalidateScheduleCache,
   renderScheduleImage,
   imagePngResponse,
+  requireStartggToken,
+  startggErrorResponse,
 } from "./shared.js";
 
 const schedules = new Hono<AppEnv>();
@@ -219,18 +219,14 @@ schedules.post("/schedules/:id/entrants/sync", requireCsrf, async (c) => {
     return c.json({ error: "schedule has no start.gg tournament" }, 400);
   }
 
-  const accessToken = await getStartggAccessToken(userId(c));
+  const accessToken = await requireStartggToken(c);
   if (!accessToken) return c.json({ error: "start.gg account not linked" }, 409);
 
   let entrants: FetchedParticipant[];
   try {
     entrants = await fetchTournamentParticipants(accessToken, slug);
   } catch (err) {
-    if (err instanceof StartggApiError && err.forbidden) {
-      return c.json({ error: "no access to this tournament" }, 403);
-    }
-    console.error("[startgg] participants query failed", err);
-    return c.json({ error: "start.gg query failed" }, 502);
+    return startggErrorResponse(err, "participants query failed");
   }
 
   const now = Date.now();
