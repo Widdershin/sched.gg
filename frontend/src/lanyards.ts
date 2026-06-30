@@ -108,7 +108,9 @@ export async function generateLanyardsZip(opts: GenerateOpts): Promise<void> {
 
   const srcs = [
     ...[...design.front.elements, ...design.back.elements]
-      .filter((e) => e.type === "image" && e.src)
+      .filter(
+        (e) => (e.type === "image" || e.type === "backgroundImage") && e.src,
+      )
       .map((e) => e.src as string),
     ...Object.values(design.roleImages ?? {}),
   ];

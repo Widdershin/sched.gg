@@ -53,6 +53,7 @@ export interface StartggBinding {
 
 export type LanyardElementType =
   | "image"
+  | "backgroundImage"
   | "text"
   | "tag"
   | "schedule"
@@ -69,11 +70,11 @@ export interface LanyardElement {
   y: number; // top-left, fraction of side height
   w: number; // width, fraction of side width
   h?: number; // shapes only: height, fraction of side height (others derive)
-  // image
-  src?: string; // downscaled PNG data URL
-  opacity?: number; // image: 0-100, default 100
-  blur?: number; // image: 0-100 (relative to card height), default 0
-  darken?: number; // image: 0-100 (% black overlay), default 0
+  // image / backgroundImage ("backgroundImage" ignores x/y/w and covers the side)
+  src?: string; // downscaled image data URL
+  opacity?: number; // 0-100, default 100
+  blur?: number; // 0-100 (relative to card height), default 0
+  darken?: number; // 0-100 (% black overlay), default 0
   // text / tag
   text?: string; // static content (type "text")
   fontFrac?: number; // font size, fraction of side height
