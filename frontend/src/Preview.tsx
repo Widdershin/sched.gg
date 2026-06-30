@@ -27,6 +27,7 @@ function resolveRatio(output: OutputSettings): number | null {
 }
 
 const DEFAULT_LOGO = { size: 18, x: 2, y: 2 };
+const DEFAULT_BACKGROUND = { fit: "cover" as const, opacity: 100, blur: 0, darken: 0 };
 const RENDER_DEBOUNCE_MS = 150;
 
 function dataUrlToBlob(dataUrl: string): Blob | null {
@@ -86,12 +87,15 @@ interface Props {
 export default function Preview({ schedule, update, output, setOutput, visuals, setVisuals, scheduleId }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const bgInputRef = useRef<HTMLInputElement>(null);
   const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null);
+  const [bgImg, setBgImg] = useState<HTMLImageElement | null>(null);
   // Bumped when async render assets (the Twitch icon) load, to force a redraw.
   const [assetTick, setAssetTick] = useState(0);
   useEffect(() => onAssetsReady(() => setAssetTick((n) => n + 1)), []);
 
   const logo = schedule.logo;
+  const background = schedule.background;
 
   // Output settings (aspect + resolution) are owned by App so they persist and
   // sync alongside the schedule.
@@ -109,6 +113,17 @@ export default function Preview({ schedule, update, output, setOutput, visuals, 
     img.src = logo.src;
   }, [logo?.src]);
 
+  // Load the custom background image (if any) for the canvas to draw.
+  useEffect(() => {
+    if (!background?.src) {
+      setBgImg(null);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => setBgImg(img);
+    img.src = background.src;
+  }, [background?.src]);
+
   // Debounce renders so rapid edits (typing, slider drags) only redraw the
   // canvas once the changes settle, rather than on every keystroke/tick.
   useEffect(() => {
@@ -120,13 +135,25 @@ export default function Preview({ schedule, update, output, setOutput, visuals, 
           output.scale,
           resolveRatio(output),
           logoImg,
-          {},
+          {
+            background:
+              bgImg && background
+                ? {
+                    mode: "image",
+                    image: bgImg,
+                    fit: background.fit ?? "cover",
+                    opacity: background.opacity ?? 100,
+                    blur: background.blur ?? 0,
+                    darken: background.darken ?? 0,
+                  }
+                : { mode: "theme" },
+          },
           visuals,
         );
       }
     }, RENDER_DEBOUNCE_MS);
     return () => clearTimeout(id);
-  }, [schedule, output, logoImg, assetTick, visuals]);
+  }, [schedule, output, logoImg, bgImg, background, assetTick, visuals]);
 
   const download = () => {
     const canvas = canvasRef.current;
@@ -169,6 +196,51 @@ export default function Preview({ schedule, update, output, setOutput, visuals, 
   const removeLogo = () => {
     if (scheduleId) api.deleteLogo(scheduleId).catch(() => {});
     update((s) => (s.logo = null));
+  };
+
+  const onBackgroundFile = async (file: File | undefined) => {
+    if (!file) return;
+    let src: string;
+    try {
+      // Larger than logos so full-bleed images stay sharp, and JPEG-encoded —
+      // a photographic PNG at this size easily exceeds the server's size cap.
+      src = await fileToImageDataUrl(file, 1600, "image/jpeg", 0.85);
+    } catch {
+      alert("Could not load that image.");
+      return;
+    }
+    update((s) => {
+      s.background = { ...DEFAULT_BACKGROUND, ...(s.background || {}), src };
+    });
+    // Upload the bytes immediately; surface failures rather than swallowing them
+    // (a silent failure would leave the server showing the previous image).
+    if (scheduleId) {
+      const blob = dataUrlToBlob(src);
+      if (blob) {
+        try {
+          await api.uploadBackground(scheduleId, blob);
+        } catch (e) {
+          alert(
+            `Could not save the background: ${
+              e instanceof Error ? e.message : "upload failed"
+            }`,
+          );
+        }
+      }
+    }
+  };
+
+  const setBackgroundField = (
+    key: "fit" | "opacity" | "blur" | "darken",
+    value: string | number,
+  ) =>
+    update((s) => {
+      if (s.background) (s.background as Record<string, unknown>)[key] = value;
+    });
+
+  const removeBackground = () => {
+    if (scheduleId) api.deleteBackground(scheduleId).catch(() => {});
+    update((s) => (s.background = null));
   };
 
   return (
@@ -218,6 +290,63 @@ export default function Preview({ schedule, update, output, setOutput, visuals, 
           style={{ display: "none" }}
           onChange={(e) => {
             onLogoFile(e.target.files?.[0]);
+            e.target.value = "";
+          }}
+        />
+        <button
+          className="btn ghost"
+          onClick={() => bgInputRef.current?.click()}
+        >
+          {background ? "Replace background" : "Add background"}
+        </button>
+        {background && (
+          <>
+            <label className="scale-field">
+              Fit
+              <select
+                value={background.fit ?? "cover"}
+                onChange={(e) => setBackgroundField("fit", e.target.value)}
+              >
+                <option value="cover">Cover</option>
+                <option value="contain">Contain</option>
+              </select>
+            </label>
+            <SliderControl
+              label="Opacity"
+              value={background.opacity ?? 100}
+              min={0}
+              max={100}
+              unit="%"
+              onChange={(v) => setBackgroundField("opacity", v)}
+            />
+            <SliderControl
+              label="Blur"
+              value={background.blur ?? 0}
+              min={0}
+              max={40}
+              unit="px"
+              onChange={(v) => setBackgroundField("blur", v)}
+            />
+            <SliderControl
+              label="Darken"
+              value={background.darken ?? 0}
+              min={0}
+              max={100}
+              unit="%"
+              onChange={(v) => setBackgroundField("darken", v)}
+            />
+            <button className="btn ghost danger" onClick={removeBackground}>
+              Remove
+            </button>
+          </>
+        )}
+        <input
+          ref={bgInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            onBackgroundFile(e.target.files?.[0]);
             e.target.value = "";
           }}
         />

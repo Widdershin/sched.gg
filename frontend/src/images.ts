@@ -1,6 +1,13 @@
 // Read an image file, downscale to keep embedded data URLs small, and return a
-// PNG data URL. Shared by the logo upload (Preview) and the lanyard designer.
-export function fileToImageDataUrl(file: File, max = 1000): Promise<string> {
+// data URL. Defaults to PNG (preserves transparency — used by the logo and
+// lanyard element images). Pass type "image/jpeg" for full-bleed photos like the
+// schedule background, where PNG would balloon to several MB.
+export function fileToImageDataUrl(
+  file: File,
+  max = 1000,
+  type: "image/png" | "image/jpeg" = "image/png",
+  quality?: number,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = reject;
@@ -15,7 +22,7 @@ export function fileToImageDataUrl(file: File, max = 1000): Promise<string> {
         c.width = w;
         c.height = h;
         c.getContext("2d")!.drawImage(img, 0, 0, w, h);
-        resolve(c.toDataURL("image/png"));
+        resolve(c.toDataURL(type, quality));
       };
       img.src = reader.result as string;
     };

@@ -4,6 +4,7 @@
 import { zip } from "fflate";
 import { entrantName, sidePixels } from "../../shared/lanyard.js";
 import {
+  lanyardScheduleBackground,
   preloadImages,
   renderEntrantSchedule,
   renderLanyardSide,
@@ -54,6 +55,7 @@ export interface GenerateOpts {
   design: LanyardDesign;
   output: OutputSettings;
   logoImg: HTMLImageElement | null;
+  bgImg?: HTMLImageElement | null;
   entrants: Entrant[];
   onProgress?: (done: number, total: number) => void;
   // Zip filename without extension; defaults to `lanyards-<title>`.
@@ -63,9 +65,14 @@ export interface GenerateOpts {
 // Render each entrant's designed front (+ back when non-empty), zip (stored —
 // PNGs are already compressed), and download a single archive.
 export async function generateLanyardsZip(opts: GenerateOpts): Promise<void> {
-  const { schedule, design, output, logoImg, entrants, onProgress, zipName } =
+  const { schedule, design, output, logoImg, bgImg, entrants, onProgress, zipName } =
     opts;
   const ratio = resolveRatio(output);
+  const background = lanyardScheduleBackground(
+    design,
+    bgImg ?? null,
+    schedule.background,
+  );
   const { w: sideW, h: sideH } = sidePixels(design);
   const hasBack = design.back.elements.length > 0;
 
@@ -98,6 +105,7 @@ export async function generateLanyardsZip(opts: GenerateOpts): Promise<void> {
       ratio,
       logoImg,
       entrant.eventIds,
+      background,
     );
     const assets = {
       scheduleImg,

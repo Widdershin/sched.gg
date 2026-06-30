@@ -10,6 +10,7 @@ declare class CanvasRenderingContext2D {
   textBaseline: string;
   globalCompositeOperation: string;
   globalAlpha: number;
+  filter: string;
   shadowColor: string;
   shadowBlur: number;
   fillRect(x: number, y: number, w: number, h: number): void;

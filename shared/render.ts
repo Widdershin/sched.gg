@@ -110,6 +110,53 @@ export function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+// Draw an image to fill (cover) or fit inside (contain) a W×H box, centered, at
+// the given opacity (0-100), with optional blur (px) and darken (% black overlay).
+function drawImageFit(
+  ctx: CanvasRenderingContext2D,
+  img: ImageLike,
+  W: number,
+  H: number,
+  fit: "cover" | "contain",
+  opacity: number,
+  blur = 0,
+  darken = 0,
+): void {
+  const iw = (img.naturalWidth ?? img.width) || 0;
+  const ih = (img.naturalHeight ?? img.height) || 0;
+  if (iw <= 0 || ih <= 0) return;
+  const scale =
+    fit === "contain"
+      ? Math.min(W / iw, H / ih)
+      : Math.max(W / iw, H / ih);
+  let dw = iw * scale;
+  let dh = ih * scale;
+  let dx = (W - dw) / 2;
+  let dy = (H - dh) / 2;
+  ctx.save();
+  ctx.globalAlpha = clamp(opacity, 0, 100) / 100;
+  const b = Math.max(0, blur);
+  if (b > 0) {
+    ctx.filter = `blur(${b}px)`;
+    // Overscan so the blur doesn't pull transparent edges into the canvas.
+    dx -= b * 2;
+    dy -= b * 2;
+    dw += b * 4;
+    dh += b * 4;
+  }
+  ctx.drawImage(img as never, dx, dy, dw, dh);
+  ctx.restore();
+
+  const d = clamp(darken, 0, 100) / 100;
+  if (d > 0) {
+    ctx.save();
+    ctx.globalAlpha = d;
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+}
+
 function roundRect(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -512,10 +559,22 @@ export interface RenderOpts {
   twitchGlyph: TwitchGlypher;
   watermark?: boolean;
   visuals?: VisualSettings | null;
+  // How to paint the canvas behind the grid. Defaults to the theme's solid bg.
+  background?: BackgroundSpec | null;
   // Per-entrant personalization (lanyards): blocks whose eventId is in this set
   // get a glowing emphasis, and `subtitle` (the entrant name) is drawn by the title.
   highlightEventIds?: Set<string>;
   subtitle?: string | null;
+}
+
+export interface BackgroundSpec {
+  mode: "theme" | "color" | "transparent" | "image";
+  color?: string; // mode "color"
+  image?: ImageLike | null; // mode "image"
+  fit?: "cover" | "contain"; // mode "image", default "cover"
+  opacity?: number; // mode "image", 0-100, default 100
+  blur?: number; // mode "image", px, default 0
+  darken?: number; // mode "image", 0-100, default 0
 }
 
 export function renderScheduleToContext(
@@ -534,14 +593,36 @@ export function renderScheduleToContext(
     highlightEventIds,
     subtitle,
     visuals,
+    background,
   } = opts;
 
   const theme = resolveTheme(visuals);
   const layout = resolveLayout(visuals);
 
-  ctx.fillStyle = theme.bg;
-
-  ctx.fillRect(0, 0, W, H);
+  const bgMode = background?.mode ?? "theme";
+  if (bgMode === "transparent") {
+    // Leave the canvas transparent so a host (e.g. a lanyard card) shows through.
+  } else if (bgMode === "color") {
+    ctx.fillStyle = background?.color || theme.bg;
+    ctx.fillRect(0, 0, W, H);
+  } else if (bgMode === "image" && background?.image) {
+    // Base fill first so a "contain" image (or any transparency) isn't empty.
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, W, H);
+    drawImageFit(
+      ctx,
+      background.image,
+      W,
+      H,
+      background.fit ?? "cover",
+      background.opacity ?? 100,
+      background.blur ?? 0,
+      background.darken ?? 0,
+    );
+  } else {
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, W, H);
+  }
 
   const left = layout.pad;
 

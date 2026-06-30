@@ -44,6 +44,7 @@ export default function App() {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const logoBlobUrlRef = useRef<string | null>(null);
+  const bgBlobUrlRef = useRef<string | null>(null);
   const [shareToken, setShareToken] = useState<string | null>(null);
 
   // Server-synced schedule list + the one currently being edited.
@@ -80,6 +81,21 @@ export default function App() {
         }
       } catch {
         // Logo fetch failed — leave src undefined, title will show instead.
+      }
+    }
+
+    // Load the custom background as a blob URL if one exists on the server.
+    if (normalized.background) {
+      try {
+        const blob = await api.getBackgroundBlob(id);
+        if (blob) {
+          if (bgBlobUrlRef.current) URL.revokeObjectURL(bgBlobUrlRef.current);
+          const url = URL.createObjectURL(blob);
+          bgBlobUrlRef.current = url;
+          normalized.background.src = url;
+        }
+      } catch {
+        // Background fetch failed — fall back to the theme bg.
       }
     }
 
@@ -137,6 +153,9 @@ export default function App() {
       const clean = structuredClone(schedule);
       if (clean.logo) {
         delete (clean.logo as unknown as Record<string, unknown>).src;
+      }
+      if (clean.background) {
+        delete (clean.background as unknown as Record<string, unknown>).src;
       }
       api
         .updateSchedule(currentScheduleId, {

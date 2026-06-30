@@ -1,9 +1,10 @@
 // Browser-side renderer for one lanyard side. Used by both the designer stage
 // (screen px) and the PNG exporter (export px) so layout always matches.
 import { THEME } from "../../shared/render.js";
+import type { BackgroundSpec } from "../../shared/render.js";
 import { elementRect } from "../../shared/lanyard.js";
 import { renderSchedule } from "./render";
-import type { LanyardSide, Schedule } from "./types";
+import type { LanyardDesign, LanyardSide, Schedule, ScheduleBackground } from "./types";
 
 export interface SideAssets {
   // The selected/entrant's rendered schedule (a canvas), or null when none.
@@ -95,6 +96,30 @@ export function renderLanyardSide(
   }
 }
 
+// Resolve a lanyard design's schedule background mode into a render spec. Falls
+// back to a solid theme-colored background when "image" is chosen but no custom
+// background image is available — and that's also the default (preserves the old
+// look). `bgImg` is the schedule's loaded custom background, if any.
+export function lanyardScheduleBackground(
+  design: LanyardDesign,
+  bgImg: HTMLImageElement | null,
+  scheduleBackground?: ScheduleBackground | null,
+): BackgroundSpec {
+  const mode = design.scheduleBg ?? "color";
+  if (mode === "transparent") return { mode: "transparent" };
+  if (mode === "image" && bgImg) {
+    return {
+      mode: "image",
+      image: bgImg,
+      fit: scheduleBackground?.fit ?? "cover",
+      opacity: scheduleBackground?.opacity ?? 100,
+      blur: scheduleBackground?.blur ?? 0,
+      darken: scheduleBackground?.darken ?? 0,
+    };
+  }
+  return { mode: "color", color: design.scheduleBgColor || THEME.bg };
+}
+
 // Render an entrant's personalized schedule (highlighted events, no name overlay —
 // the player tag is a separate element) to an offscreen canvas.
 export function renderEntrantSchedule(
@@ -103,10 +128,12 @@ export function renderEntrantSchedule(
   ratio: number | null,
   logoImg: HTMLImageElement | null,
   eventIds: string[],
+  background?: BackgroundSpec | null,
 ): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   renderSchedule(canvas, schedule, scale, ratio, logoImg, {
     highlightEventIds: new Set(eventIds),
+    background,
   });
   return canvas;
 }

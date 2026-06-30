@@ -4,7 +4,7 @@ import {
   resolveLayout,
 } from "../../shared/render.js";
 import type { Schedule, VisualSettings } from "../../shared/types.js";
-import type { Measure, TwitchGlypher } from "../../shared/render.js";
+import type { Measure, TwitchGlypher, BackgroundSpec } from "../../shared/render.js";
 
 export { measureSchedule };
 export type { Measure };
@@ -62,6 +62,7 @@ const twitchGlyph: TwitchGlypher = (ctx, color, size) => {
 export interface RenderExtra {
   highlightEventIds?: Set<string>;
   subtitle?: string | null;
+  background?: BackgroundSpec | null;
 }
 
 export function renderSchedule(
@@ -124,6 +125,7 @@ export function renderSchedule(
     highlightEventIds: extra.highlightEventIds,
     subtitle: extra.subtitle,
     visuals,
+    background: extra.background,
   });
 
   return m;

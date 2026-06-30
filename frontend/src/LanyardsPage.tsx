@@ -23,6 +23,7 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [output, setOutput] = useState<OutputSettings>(DEFAULT_OUTPUT);
   const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null);
+  const [bgImg, setBgImg] = useState<HTMLImageElement | null>(null);
   const [entrants, setEntrants] = useState<Entrant[]>([]);
   const [syncedAt, setSyncedAt] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -47,6 +48,7 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
     }
     let cancelled = false;
     let blobUrl: string | null = null;
+    let bgBlobUrl: string | null = null;
     (async () => {
       try {
         const full = await api.getSchedule(scheduleId);
@@ -68,6 +70,21 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
             /* draw without logo */
           }
         }
+        // Load the custom background (its src is stripped server-side).
+        if (data.background) {
+          try {
+            const blob = await api.getBackgroundBlob(scheduleId);
+            if (blob && !cancelled) {
+              bgBlobUrl = URL.createObjectURL(blob);
+              data.background.src = bgBlobUrl;
+              const img = new Image();
+              img.onload = () => !cancelled && setBgImg(img);
+              img.src = bgBlobUrl;
+            }
+          } catch {
+            /* draw without background */
+          }
+        }
         if (!data.lanyard) data.lanyard = defaultDesign();
         if (!data.roles || data.roles.length === 0) data.roles = [DEFAULT_ROLE];
         setSchedule(data);
@@ -86,6 +103,7 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
     return () => {
       cancelled = true;
       if (blobUrl) URL.revokeObjectURL(blobUrl);
+      if (bgBlobUrl) URL.revokeObjectURL(bgBlobUrl);
     };
   }, [auth.loading, auth.user, scheduleId]);
 
@@ -122,6 +140,7 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
     const t = setTimeout(() => {
       const clean = structuredClone(schedule);
       if (clean.logo) delete (clean.logo as unknown as Record<string, unknown>).src;
+      if (clean.background) delete (clean.background as unknown as Record<string, unknown>).src;
       api.updateSchedule(scheduleId, { data: clean }).catch(() => {});
     }, SAVE_DEBOUNCE_MS);
     return () => clearTimeout(t);
@@ -156,6 +175,7 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
         design: schedule.lanyard,
         output,
         logoImg,
+        bgImg,
         entrants: list,
         zipName,
         onProgress: (done, total) => setProgress({ done, total }),
@@ -406,6 +426,7 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
                   schedule={schedule}
                   output={output}
                   logoImg={logoImg}
+                  bgImg={bgImg}
                   selectedEntrant={selected}
                 />
               )}

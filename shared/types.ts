@@ -87,6 +87,11 @@ export interface LanyardSide {
   elements: LanyardElement[]; // array order = z-order (last drawn on top)
 }
 
+// How the schedule embedded on a lanyard card draws its background. "image" uses
+// the schedule's custom background image, "color" a solid color, "transparent"
+// nothing (so the lanyard card's own background/elements show through).
+export type LanyardScheduleBg = "image" | "color" | "transparent";
+
 export interface LanyardDesign {
   widthMm: number;
   heightMm: number;
@@ -95,12 +100,28 @@ export interface LanyardDesign {
   back: LanyardSide;
   // role name → downscaled image data URL, shared across all roleImage elements.
   roleImages?: Record<string, string>;
+  // Background mode for the embedded schedule (one choice for all cards).
+  // Defaults to a solid theme-colored background, preserving the prior look.
+  scheduleBg?: LanyardScheduleBg;
+  scheduleBgColor?: string; // used when scheduleBg === "color"
+}
+
+// A custom background image drawn behind the schedule grid. Mirrors the logo:
+// `src` (a data/blob URL) is frontend-only; the bytes are stored server-side in a
+// dedicated BLOB column and loaded for server renders.
+export interface ScheduleBackground {
+  src?: string; // data URL (frontend) or blob URL
+  fit?: "cover" | "contain"; // default "cover"
+  opacity?: number; // 0-100, default 100
+  blur?: number; // px, default 0
+  darken?: number; // 0-100 (% black overlay), default 0
 }
 
 export interface Schedule {
   title: string;
   days: Day[];
   logo?: Logo | null;
+  background?: ScheduleBackground | null;
   startgg?: StartggBinding | null;
   lanyard?: LanyardDesign | null;
   roles?: string[]; // player role types (defaults to ["Competitor"])

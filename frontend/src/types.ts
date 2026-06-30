@@ -6,6 +6,7 @@ import type {
   DayWidth,
   Day,
   Logo,
+  ScheduleBackground,
   Schedule,
   AspectMode,
   OutputSettings,
@@ -17,6 +18,7 @@ import type {
   LanyardElement,
   LanyardSide,
   LanyardDesign,
+  LanyardScheduleBg,
 } from "../../shared/types.js";
 
 export type {
@@ -26,6 +28,7 @@ export type {
   DayWidth,
   Day,
   Logo,
+  ScheduleBackground,
   Schedule,
   AspectMode,
   OutputSettings,
@@ -37,6 +40,7 @@ export type {
   LanyardElement,
   LanyardSide,
   LanyardDesign,
+  LanyardScheduleBg,
 };
 
 // Mutate a draft schedule in place (used with App's structuredClone helper).

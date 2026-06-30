@@ -125,6 +125,10 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE schedule_entrants ADD COLUMN source TEXT NOT NULL DEFAULT 'startgg';
     `,
   },
+  {
+    version: 8,
+    sql: `ALTER TABLE schedules ADD COLUMN background BLOB;`,
+  },
 ];
 
 interface LogoObject {
