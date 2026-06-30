@@ -736,6 +736,15 @@ function ElementProps({
               e.target.value = "";
             }}
           />
+          {slider("Opacity", el.opacity ?? 100, 0, 100, 1, (v) =>
+            updateEl(el.id, (e) => (e.opacity = v)),
+          )}
+          {slider("Blur", el.blur ?? 0, 0, 100, 1, (v) =>
+            updateEl(el.id, (e) => (e.blur = v)),
+          )}
+          {slider("Darken", el.darken ?? 0, 0, 100, 1, (v) =>
+            updateEl(el.id, (e) => (e.darken = v)),
+          )}
         </>
       )}
 
