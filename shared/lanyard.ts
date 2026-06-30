@@ -57,6 +57,10 @@ export function elementRect(
   const y = el.y * sideH;
   const w = el.w * sideW;
 
+  if (el.type === "backgroundImage") {
+    // Always covers the whole side; x/y/w are ignored.
+    return { x: 0, y: 0, w: sideW, h: sideH, fontPx: 0 };
+  }
   if (el.type === "image" || el.type === "schedule" || el.type === "roleImage") {
     const aspect = opts.aspect && opts.aspect > 0 ? opts.aspect : 1;
     return { x, y, w, h: w / aspect, fontPx: 0 };
@@ -107,6 +111,10 @@ export function makeElement(
       break;
     case "image":
       Object.assign(base, { w: 0.4 });
+      break;
+    case "backgroundImage":
+      // Full-bleed; position/size are fixed to the side.
+      Object.assign(base, { x: 0, y: 0, w: 1 });
       break;
     case "roleImage":
       Object.assign(base, { w: 0.25 });

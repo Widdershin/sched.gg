@@ -87,6 +87,7 @@ export default function LanyardDesigner({
   const stageRef = useRef<HTMLDivElement>(null);
   const drag = useRef<DragState | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const bgImageInputRef = useRef<HTMLInputElement>(null);
   // Offscreen context just for measuring fitted text size.
   const measureCtx = useMemo(
     () => document.createElement("canvas").getContext("2d"),
@@ -129,7 +130,9 @@ export default function LanyardDesigner({
   useEffect(() => {
     const srcs = [
       ...currentSide.elements
-        .filter((e) => e.type === "image" && e.src)
+        .filter(
+          (e) => (e.type === "image" || e.type === "backgroundImage") && e.src,
+        )
         .map((e) => e.src as string),
       ...Object.values(roleImages),
     ];
@@ -224,6 +227,21 @@ export default function LanyardDesigner({
     try {
       const src = await fileToImageDataUrl(file);
       addEl("image", { src });
+    } catch {
+      alert("Could not load that image.");
+    }
+  };
+
+  const onAddBackgroundImage = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      // Full-bleed photo: JPEG-encode at a larger size to stay sharp without
+      // bloating the schedule JSON (it embeds as a data URL).
+      const src = await fileToImageDataUrl(file, 1600, "image/jpeg", 0.85);
+      const el = makeElement("backgroundImage", { src });
+      // Insert at the bottom of the z-order so it sits behind everything.
+      update((d) => d[side].elements.unshift(el));
+      setSelectedElId(el.id);
     } catch {
       alert("Could not load that image.");
     }
@@ -361,6 +379,12 @@ export default function LanyardDesigner({
           <button className="btn ghost" onClick={() => imageInputRef.current?.click()}>
             + Image
           </button>
+          <button
+            className="btn ghost"
+            onClick={() => bgImageInputRef.current?.click()}
+          >
+            + Background
+          </button>
           <button className="btn ghost" onClick={() => addEl("text")}>
             + Text
           </button>
@@ -397,6 +421,16 @@ export default function LanyardDesigner({
             e.target.value = "";
           }}
         />
+        <input
+          ref={bgImageInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            onAddBackgroundImage(e.target.files?.[0]);
+            e.target.value = "";
+          }}
+        />
       </div>
 
       <div className="lanyard-design-body">
@@ -429,14 +463,24 @@ export default function LanyardDesigner({
           {currentSide.elements.map((el) => {
             const r = elementRect(el, stageW, STAGE_H, rectOpts(el, stageW, STAGE_H));
             const isSel = el.id === selectedElId;
+            // The background image fills the side — it's selectable but not
+            // movable/resizable.
+            const isBg = el.type === "backgroundImage";
             return (
               <div
                 key={el.id}
                 className={`el-box${isSel ? " selected" : ""}`}
                 style={{ left: r.x, top: r.y, width: r.w, height: r.h }}
-                onPointerDown={(e) => onElPointerDown(el, "move", e)}
+                onPointerDown={(e) => {
+                  if (isBg) {
+                    e.stopPropagation();
+                    setSelectedElId(el.id);
+                  } else {
+                    onElPointerDown(el, "move", e);
+                  }
+                }}
               >
-                {isSel && (
+                {isSel && !isBg && (
                   <span
                     className="el-handle"
                     onPointerDown={(e) => onElPointerDown(el, "resize", e)}
@@ -465,12 +509,17 @@ export default function LanyardDesigner({
               design={design}
               updateDesign={update}
               hasBackground={!!schedule.background}
-              onReplaceImage={(file) =>
-                file &&
-                fileToImageDataUrl(file)
-                  .then((src) => updateEl(selectedEl.id, (e) => (e.src = src)))
-                  .catch(() => alert("Could not load that image."))
-              }
+              onReplaceImage={(file) => {
+                if (!file) return;
+                // Background images get the same JPEG encoding as when added.
+                const p =
+                  selectedEl.type === "backgroundImage"
+                    ? fileToImageDataUrl(file, 1600, "image/jpeg", 0.85)
+                    : fileToImageDataUrl(file);
+                p.then((src) =>
+                  updateEl(selectedEl.id, (e) => (e.src = src)),
+                ).catch(() => alert("Could not load that image."));
+              }}
             />
           ) : (
             <p className="startgg-hint">Select an element to edit it.</p>
@@ -485,6 +534,8 @@ function layerLabel(el: LanyardElement): string {
   switch (el.type) {
     case "image":
       return "Image";
+    case "backgroundImage":
+      return "Background image";
     case "text":
       return el.text?.trim() ? `Text: ${el.text}` : "Text";
     case "tag":
@@ -640,12 +691,16 @@ function ElementProps({
           ? "Player tag"
           : el.type === "roleImage"
             ? "Role image"
-            : el.type}
+            : el.type === "backgroundImage"
+              ? "Background image"
+              : el.type}
       </span>
 
-      {slider("Width", el.w, 0.05, 1, 0.01, (v) =>
-        updateEl(el.id, (e) => (e.w = v)),
-      )}
+      {/* Background image covers the whole side, so it has no width control. */}
+      {el.type !== "backgroundImage" &&
+        slider("Width", el.w, 0.05, 1, 0.01, (v) =>
+          updateEl(el.id, (e) => (e.w = v)),
+        )}
 
       {(el.type === "text" || el.type === "tag") && (
         <>
@@ -721,7 +776,7 @@ function ElementProps({
         </>
       )}
 
-      {el.type === "image" && (
+      {(el.type === "image" || el.type === "backgroundImage") && (
         <>
           <button className="btn ghost" onClick={() => replaceRef.current?.click()}>
             Replace image

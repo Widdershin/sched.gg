@@ -24,19 +24,32 @@ interface Rect {
   h: number;
 }
 
-// Draw an image element honoring its opacity / blur / darken adjustments. When
-// blurred, the box is clipped and the image overscanned so the blur fills the
-// rect cleanly instead of fading at the edges.
+// Draw an image element honoring its opacity / blur / darken adjustments. With
+// `cover`, the image is scaled to fill the box (cropping overflow) instead of
+// filling the box exactly — used by the full-bleed background image. When blurred,
+// the box is clipped and the image overscanned so the blur fills it cleanly
+// instead of fading at the edges.
 function drawImageElement(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement | HTMLCanvasElement,
   r: Rect,
   el: LanyardElement,
   sideH: number,
+  cover = false,
 ): void {
   const opacity = clamp(el.opacity ?? 100, 0, 100) / 100;
   const darken = clamp(el.darken ?? 0, 0, 100) / 100;
   const blurPx = (clamp(el.blur ?? 0, 0, 100) / 100) * MAX_BLUR_FRAC * sideH;
+
+  // Destination rect for the image. "cover" enlarges it to fill the box, centered.
+  let dst = r;
+  if (cover) {
+    const a = imgAspect(img);
+    const fitByHeight = r.w / r.h <= a;
+    const dw = fitByHeight ? r.h * a : r.w;
+    const dh = fitByHeight ? r.h : r.w / a;
+    dst = { x: r.x + (r.w - dw) / 2, y: r.y + (r.h - dh) / 2, w: dw, h: dh };
+  }
 
   ctx.save();
   ctx.globalAlpha = opacity;
@@ -46,9 +59,14 @@ function drawImageElement(
     ctx.clip();
     ctx.filter = `blur(${blurPx}px)`;
     const o = blurPx * 2;
-    ctx.drawImage(img, r.x - o, r.y - o, r.w + o * 2, r.h + o * 2);
+    ctx.drawImage(img, dst.x - o, dst.y - o, dst.w + o * 2, dst.h + o * 2);
   } else {
-    ctx.drawImage(img, r.x, r.y, r.w, r.h);
+    if (cover) {
+      ctx.beginPath();
+      ctx.rect(r.x, r.y, r.w, r.h);
+      ctx.clip();
+    }
+    ctx.drawImage(img, dst.x, dst.y, dst.w, dst.h);
   }
   ctx.restore();
 
@@ -115,6 +133,11 @@ export function renderLanyardSide(
       if (!img) continue;
       const r = elementRect(el, sideW, sideH, { aspect: imgAspect(img) });
       drawImageElement(ctx, img, r, el, sideH);
+    } else if (el.type === "backgroundImage") {
+      const img = el.src ? assets.images.get(el.src) : undefined;
+      if (!img) continue;
+      const r = elementRect(el, sideW, sideH); // full side
+      drawImageElement(ctx, img, r, el, sideH, true);
     } else if (el.type === "schedule") {
       const img = assets.scheduleImg;
       if (!img) continue;
