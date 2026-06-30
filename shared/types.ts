@@ -70,6 +70,9 @@ export interface LanyardElement {
   y: number; // top-left, fraction of side height
   w: number; // width, fraction of side width
   h?: number; // shapes only: height, fraction of side height (others derive)
+  // When true, the element is drawn on both sides with identical settings. It is
+  // stored on (and edited from) its home side; the other side renders a copy.
+  shared?: boolean;
   // image / backgroundImage ("backgroundImage" ignores x/y/w and covers the side)
   src?: string; // downscaled image data URL
   opacity?: number; // 0-100, default 100

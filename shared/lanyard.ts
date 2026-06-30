@@ -30,6 +30,19 @@ export function sidePixels(design: LanyardDesign): { w: number; h: number } {
   };
 }
 
+// The elements to draw for one side, in z-order: the other side's "shared"
+// elements first (behind), then this side's own elements. A shared element thus
+// appears on both sides — in its authored position on its home side, and behind
+// the other side's content when visiting.
+export function sideElementsForRender(
+  design: LanyardDesign,
+  side: "front" | "back",
+): LanyardElement[] {
+  const other = side === "front" ? "back" : "front";
+  const visiting = design[other].elements.filter((e) => e.shared);
+  return [...visiting, ...design[side].elements];
+}
+
 export interface ElementRect {
   x: number;
   y: number;
