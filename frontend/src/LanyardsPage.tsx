@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "./api";
 import { useAuth } from "./AuthContext";
-import { generateLanyardsZip } from "./lanyards";
+import { generateLanyardsZip, type LanyardFormat } from "./lanyards";
 import LanyardDesigner from "./LanyardDesigner";
 import { defaultDesign, entrantName } from "../../shared/lanyard.js";
 import { fileToImageDataUrl } from "./images";
@@ -35,6 +35,7 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
   const [actionError, setActionError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [format, setFormat] = useState<LanyardFormat>("png");
 
   // Suppress the autosave that would otherwise fire from the initial load.
   const loadedScheduleRef = useRef(false);
@@ -178,6 +179,7 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
         bgImg,
         entrants: list,
         zipName,
+        format,
         onProgress: (done, total) => setProgress({ done, total }),
       });
     } catch (e) {
@@ -343,8 +345,20 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
             <span className="startgg-hint">
               {entrants.length} entrants · last synced {formatSynced(syncedAt)}
             </span>
+            <label className="scale-field push-right">
+              Format
+              <select
+                value={format}
+                onChange={(e) => setFormat(e.target.value as LanyardFormat)}
+                disabled={generating}
+                title="PNG: front/back images. PDF: one 2-page card (front, then back) at the card's print size and DPI."
+              >
+                <option value="png">PNG</option>
+                <option value="pdf">PDF ({schedule?.lanyard?.dpi ?? 300} DPI)</option>
+              </select>
+            </label>
             <button
-              className="btn ghost push-right"
+              className="btn ghost"
               onClick={generateSelected}
               disabled={generating || !selected}
               title="Download just the selected entrant's lanyard"
@@ -358,7 +372,9 @@ export default function LanyardsPage({ scheduleId }: { scheduleId: string | null
             >
               {generating && progress
                 ? `Generating ${progress.done}/${progress.total}…`
-                : "Generate all (zip)"}
+                : format === "pdf"
+                  ? "Generate all (PDF zip)"
+                  : "Generate all (zip)"}
             </button>
           </div>
           {actionError && <p className="warn">{actionError}</p>}

@@ -9,7 +9,15 @@ import {
   renderEntrantSchedule,
   renderLanyardSide,
 } from "./lanyard-render";
+import { imagesToPdf, type PdfPage } from "./pdf";
 import type { Entrant, LanyardDesign, OutputSettings, Schedule } from "./types";
+
+export type LanyardFormat = "png" | "pdf";
+
+// Physical millimetres to PDF points (1/72 inch).
+function mmToPt(mm: number): number {
+  return (mm / 25.4) * 72;
+}
 
 // Resolve an aspect mode + custom W/H into a numeric ratio (or null for "fit").
 function resolveRatio(output: OutputSettings): number | null {
@@ -32,14 +40,32 @@ function safeName(s: string): string {
   );
 }
 
-function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
+function canvasToBytes(
+  canvas: HTMLCanvasElement,
+  type: string,
+  quality?: number,
+): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
-    canvas.toBlob(async (blob) => {
-      if (!blob) return reject(new Error("toBlob failed"));
-      resolve(new Uint8Array(await blob.arrayBuffer()));
-    }, "image/png");
+    canvas.toBlob(
+      async (blob) => {
+        if (!blob) return reject(new Error("toBlob failed"));
+        resolve(new Uint8Array(await blob.arrayBuffer()));
+      },
+      type,
+      quality,
+    );
   });
 }
+
+// JPEG quality for PDF pages — high enough for crisp 300 DPI print, while
+// keeping per-card files small (a lossless PNG export remains available too).
+const PDF_JPEG_QUALITY = 0.95;
+
+const MIME_BY_EXT: Record<string, string> = {
+  pdf: "application/pdf",
+  png: "image/png",
+  zip: "application/zip",
+};
 
 function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
@@ -60,13 +86,17 @@ export interface GenerateOpts {
   onProgress?: (done: number, total: number) => void;
   // Zip filename without extension; defaults to `lanyards-<title>`.
   zipName?: string;
+  // Output format per card: "png" (front/back PNGs) or "pdf" (one 2-page PDF,
+  // front then back, sized to the physical card at its DPI). Defaults to "png".
+  format?: LanyardFormat;
 }
 
-// Render each entrant's designed front (+ back when non-empty), zip (stored —
-// PNGs are already compressed), and download a single archive.
+// Render each entrant's designed front (+ back when non-empty) in the chosen
+// format and download them: a single file when there's just one, otherwise a zip.
 export async function generateLanyardsZip(opts: GenerateOpts): Promise<void> {
   const { schedule, design, output, logoImg, bgImg, entrants, onProgress, zipName } =
     opts;
+  const format: LanyardFormat = opts.format ?? "png";
   const ratio = resolveRatio(output);
   const background = lanyardScheduleBackground(
     design,
@@ -121,16 +151,57 @@ export async function generateLanyardsZip(opts: GenerateOpts): Promise<void> {
 
     fctx.setTransform(1, 0, 0, 1, 0, 0);
     renderLanyardSide(fctx, design.front, sideW, sideH, assets);
-    files[`${base}-front.png`] = await canvasToPngBytes(front);
 
     if (hasBack) {
       bctx.setTransform(1, 0, 0, 1, 0, 0);
       renderLanyardSide(bctx, design.back, sideW, sideH, assets);
-      files[`${base}-back.png`] = await canvasToPngBytes(back);
+    }
+
+    if (format === "pdf") {
+      const ptW = mmToPt(design.widthMm);
+      const ptH = mmToPt(design.heightMm);
+      const pages: PdfPage[] = [
+        {
+          jpeg: await canvasToBytes(front, "image/jpeg", PDF_JPEG_QUALITY),
+          pxW: sideW,
+          pxH: sideH,
+          ptW,
+          ptH,
+        },
+      ];
+      if (hasBack) {
+        pages.push({
+          jpeg: await canvasToBytes(back, "image/jpeg", PDF_JPEG_QUALITY),
+          pxW: sideW,
+          pxH: sideH,
+          ptW,
+          ptH,
+        });
+      }
+      files[`${base}.pdf`] = imagesToPdf(pages);
+    } else {
+      files[`${base}-front.png`] = await canvasToBytes(front, "image/png");
+      if (hasBack) {
+        files[`${base}-back.png`] = await canvasToBytes(back, "image/png");
+      }
     }
 
     onProgress?.(i + 1, entrants.length);
     await new Promise((r) => setTimeout(r, 0)); // yield so progress can paint
+  }
+
+  // A single produced file downloads directly; multiple are bundled into a zip.
+  const names = Object.keys(files);
+  if (names.length === 1) {
+    const name = names[0];
+    const ext = name.split(".").pop() ?? "";
+    triggerDownload(
+      new Blob([files[name] as unknown as BlobPart], {
+        type: MIME_BY_EXT[ext] ?? "application/octet-stream",
+      }),
+      name,
+    );
+    return;
   }
 
   const zipped = await new Promise<Uint8Array>((resolve, reject) => {
