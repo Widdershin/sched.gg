@@ -25,6 +25,8 @@ export default function ShareView({ token }: { token: string }) {
   const [state, setState] = useState<ShareState>({ status: "loading" });
   const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null);
   const [logoSrc, setLogoSrc] = useState<string | null>(null);
+  const [bgImg, setBgImg] = useState<HTMLImageElement | null>(null);
+  const [bgSrc, setBgSrc] = useState<string | null>(null);
   const [assetTick, setAssetTick] = useState(0);
   useEffect(() => onAssetsReady(() => setAssetTick((n) => n + 1)), []);
 
@@ -73,6 +75,35 @@ export default function ShareView({ token }: { token: string }) {
     img.src = logoSrc;
   }, [logoSrc]);
 
+  // Fetch the background blob if the shared schedule has one.
+  useEffect(() => {
+    if (state.status !== "ok" || !state.data.background) return;
+    let cancelled = false;
+    let blobUrl: string | null = null;
+    api
+      .getSharedBackgroundBlob(token)
+      .then((blob) => {
+        if (cancelled || !blob) return;
+        blobUrl = URL.createObjectURL(blob);
+        setBgSrc(blobUrl);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [state.status, token]);
+
+  useEffect(() => {
+    if (!bgSrc) {
+      setBgImg(null);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => setBgImg(img);
+    img.src = bgSrc;
+  }, [bgSrc]);
+
   // Render whenever data / logo are ready.
   useEffect(() => {
     if (state.status !== "ok" || !canvasRef.current) return;
@@ -80,16 +111,29 @@ export default function ShareView({ token }: { token: string }) {
       ? { ...state.data, logo: { ...state.data.logo, src: logoSrc } }
       : state.data;
     const scale = state.output?.scale ?? 2;
+    const bg = state.data.background;
     renderSchedule(
       canvasRef.current,
       data,
       scale,
       resolveRatio(state.output),
       logoImg,
-      {},
+      {
+        background:
+          bgImg && bg
+            ? {
+                mode: "image",
+                image: bgImg,
+                fit: bg.fit ?? "cover",
+                opacity: bg.opacity ?? 100,
+                blur: bg.blur ?? 0,
+                darken: bg.darken ?? 0,
+              }
+            : { mode: "theme" },
+      },
       state.output?.visuals,
     );
-  }, [state, logoImg, assetTick, logoSrc]);
+  }, [state, logoImg, bgImg, assetTick, logoSrc, bgSrc]);
 
   const download = () => {
     const canvas = canvasRef.current;

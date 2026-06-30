@@ -168,8 +168,11 @@ export const api = {
   },
 
   getLogoBlob: async (id: string): Promise<Blob | null> => {
+    // no-store: the endpoint sends no cache headers, so the browser would
+    // otherwise serve a stale copy after the logo is replaced.
     const res = await fetch(`${BASE}/schedules/${id}/logo`, {
       credentials: "include",
+      cache: "no-store",
     });
     if (res.status === 204) return null;
     if (!res.ok) throw new Error(`failed to load logo (${res.status})`);
@@ -195,9 +198,66 @@ export const api = {
   },
 
   getSharedLogoBlob: async (token: string): Promise<Blob | null> => {
-    const res = await fetch(`${BASE}/share/${token}/logo`);
+    const res = await fetch(`${BASE}/share/${token}/logo`, { cache: "no-store" });
     if (res.status === 204) return null;
     if (!res.ok) throw new Error(`failed to load logo (${res.status})`);
+    return res.blob();
+  },
+
+  // Background-image endpoints (binary, not JSON) — mirror the logo endpoints.
+  uploadBackground: async (id: string, blob: Blob) => {
+    const tok = await ensureCsrf();
+    const headers: Record<string, string> = { "content-type": blob.type || "image/png" };
+    if (tok) headers["x-csrf-token"] = tok;
+    const res = await fetch(`${BASE}/schedules/${id}/background`, {
+      method: "PUT",
+      credentials: "include",
+      headers,
+      body: blob,
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(
+        (json as { error?: string }).error || `upload failed (${res.status})`,
+      );
+    }
+    return res.json() as Promise<{ ok: true; updated_at: number }>;
+  },
+
+  getBackgroundBlob: async (id: string): Promise<Blob | null> => {
+    // no-store: the endpoint sends no cache headers, so the browser would
+    // otherwise serve a stale copy after the background is replaced.
+    const res = await fetch(`${BASE}/schedules/${id}/background`, {
+      credentials: "include",
+      cache: "no-store",
+    });
+    if (res.status === 204) return null;
+    if (!res.ok) throw new Error(`failed to load background (${res.status})`);
+    return res.blob();
+  },
+
+  deleteBackground: async (id: string) => {
+    const tok = await ensureCsrf();
+    const headers: Record<string, string> = {};
+    if (tok) headers["x-csrf-token"] = tok;
+    const res = await fetch(`${BASE}/schedules/${id}/background`, {
+      method: "DELETE",
+      credentials: "include",
+      headers,
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(
+        (json as { error?: string }).error || `delete failed (${res.status})`,
+      );
+    }
+    return res.json() as Promise<{ ok: true; updated_at: number }>;
+  },
+
+  getSharedBackgroundBlob: async (token: string): Promise<Blob | null> => {
+    const res = await fetch(`${BASE}/share/${token}/background`, { cache: "no-store" });
+    if (res.status === 204) return null;
+    if (!res.ok) throw new Error(`failed to load background (${res.status})`);
     return res.blob();
   },
 };

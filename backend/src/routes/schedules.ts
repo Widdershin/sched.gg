@@ -29,6 +29,7 @@ import {
   invalidateScheduleCache,
   renderScheduleImage,
   imagePngResponse,
+  sniffImageMime,
   requireStartggToken,
   startggErrorResponse,
 } from "./shared.js";
@@ -179,13 +180,46 @@ schedules.get("/schedules/:id/logo", (c) => {
   return c.body(new Uint8Array(row.logo), 200, { "Content-Type": "image/png" });
 });
 
+// Background upload — raw PNG bytes, max 2 MB (backgrounds run larger than logos).
+schedules.put("/schedules/:id/background", requireCsrf, async (c) => {
+  const id = c.req.param("id");
+  const buf = Buffer.from(await c.req.arrayBuffer());
+  if (buf.length === 0 || buf.length > 2_000_000) {
+    return c.json({ error: "invalid body" }, 400);
+  }
+  const now = Date.now();
+  db.prepare("UPDATE schedules SET background = ?, updated_at = ? WHERE id = ?").run(buf, now, id);
+  invalidateScheduleCache(id);
+  return c.json({ ok: true, updated_at: now });
+});
+
+// Background deletion.
+schedules.delete("/schedules/:id/background", requireCsrf, (c) => {
+  const id = c.req.param("id");
+  const now = Date.now();
+  db.prepare("UPDATE schedules SET background = NULL, updated_at = ? WHERE id = ?").run(now, id);
+  invalidateScheduleCache(id);
+  return c.json({ ok: true, updated_at: now });
+});
+
+// Background download — returns the raw image bytes (JPEG or PNG).
+schedules.get("/schedules/:id/background", (c) => {
+  const row = getOwnedSchedule<{ background: Buffer | null }>(
+    c.req.param("id"), "background",
+  );
+  if (!row || !row.background) return c.body(null, 204);
+  return c.body(new Uint8Array(row.background), 200, {
+    "Content-Type": sniffImageMime(row.background),
+  });
+});
+
 // Render the schedule to a PNG image (auth required).
 schedules.get("/schedules/:id/image", async (c) => {
   const id = c.req.param("id");
   const row = getOwnedSchedule<{
     version: number; data: string; output: string | null;
-    logo: Buffer | null; rendered_image: Buffer | null;
-  }>(id, "version, data, output, logo, rendered_image");
+    logo: Buffer | null; background: Buffer | null; rendered_image: Buffer | null;
+  }>(id, "version, data, output, logo, background, rendered_image");
   if (!row) return c.json({ error: "not found" }, 404);
 
   const png = await renderScheduleImage(row, id, false);

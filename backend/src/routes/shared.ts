@@ -42,7 +42,7 @@ export function invalidateScheduleCache(id: string): void {
 
 /** Render a schedule to PNG, optionally caching the result in the DB. */
 export async function renderScheduleImage(
-  row: { version: number; data: string; output: string | null; logo: Buffer | null; rendered_image: Buffer | null },
+  row: { version: number; data: string; output: string | null; logo: Buffer | null; background: Buffer | null; rendered_image: Buffer | null },
   scheduleId: string,
   skipCache: boolean,
 ): Promise<Buffer> {
@@ -54,6 +54,7 @@ export async function renderScheduleImage(
     output,
     visuals: output?.visuals,
     logoBytes: row.logo ?? undefined,
+    backgroundBytes: row.background ?? undefined,
   });
 
   if (!skipCache) {
@@ -64,6 +65,26 @@ export async function renderScheduleImage(
   }
 
   return png;
+}
+
+/** Detect an image's MIME type from its magic bytes (PNG/JPEG/GIF/WebP),
+ * defaulting to image/png. Used when serving stored image blobs whose encoding
+ * isn't recorded in the DB. */
+export function sniffImageMime(buf: Buffer | Uint8Array): string {
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (buf.length >= 4 && buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) {
+    return "image/gif";
+  }
+  if (
+    buf.length >= 12 &&
+    buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+    buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  return "image/png";
 }
 
 /** Build a standard image PNG response with ETag + Cache-Control. */

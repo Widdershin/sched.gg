@@ -5,6 +5,7 @@ import {
   renderScheduleImage,
   imagePngResponse,
   validateShareToken,
+  sniffImageMime,
 } from "./shared.js";
 
 const share = new Hono<AppEnv>();
@@ -52,12 +53,31 @@ share.get("/share/:token/logo", (c) => {
   return c.body(new Uint8Array(row.logo), 200, { "Content-Type": "image/png" });
 });
 
+// Public: resolve a share token to the schedule's background image. No auth required.
+share.get("/share/:token/background", (c) => {
+  const row = db
+    .prepare(
+      `SELECT s.background AS background
+         FROM share_tokens t JOIN schedules s ON s.id = t.schedule_id
+        WHERE t.token = ?
+          AND t.revoked = 0
+          AND (t.expires_at IS NULL OR t.expires_at > ?)`,
+    )
+    .get(c.req.param("token"), Date.now()) as
+    | { background: Buffer | null }
+    | undefined;
+  if (!row || !row.background) return c.body(null, 204);
+  return c.body(new Uint8Array(row.background), 200, {
+    "Content-Type": sniffImageMime(row.background),
+  });
+});
+
 // Public: render the shared schedule as a PNG image. No auth required.
 share.get("/share/:token/image", async (c) => {
   const row = db
     .prepare(
       `SELECT t.expires_at, t.revoked,
-              s.id AS schedule_id, s.version, s.data, s.output, s.logo, s.rendered_image
+              s.id AS schedule_id, s.version, s.data, s.output, s.logo, s.background, s.rendered_image
          FROM share_tokens t JOIN schedules s ON s.id = t.schedule_id
         WHERE t.token = ?`,
     )
@@ -70,6 +90,7 @@ share.get("/share/:token/image", async (c) => {
         data: string;
         output: string | null;
         logo: Buffer | null;
+        background: Buffer | null;
         rendered_image: Buffer | null;
       }
     | undefined;

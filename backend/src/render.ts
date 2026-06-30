@@ -6,7 +6,7 @@ import {
   resolveLayout,
 } from "../../shared/render.js";
 import type { Schedule, OutputSettings, VisualSettings } from "../../shared/types.js";
-import type { TwitchGlypher, CanvasLike, ImageLike } from "../../shared/render.js";
+import type { TwitchGlypher, CanvasLike, ImageLike, BackgroundSpec } from "../../shared/render.js";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -71,6 +71,7 @@ export interface RenderOptions {
   schedule: Schedule;
   output?: OutputSettings | null;
   logoBytes?: Buffer | null;
+  backgroundBytes?: Buffer | null;
   visuals?: VisualSettings | null;
 }
 
@@ -138,6 +139,28 @@ export async function renderScheduleToPng(
     }
   }
 
+  // Load the custom background if present.
+  let bgImg: Awaited<ReturnType<typeof loadImage>> | null = null;
+  if (opts.backgroundBytes && opts.backgroundBytes.length > 0) {
+    try {
+      bgImg = await loadImage(opts.backgroundBytes);
+    } catch {
+      // background failed to load — fall back to the theme bg
+    }
+  }
+  const bg = opts.schedule.background;
+  const background: BackgroundSpec =
+    bgImg && bg
+      ? {
+          mode: "image",
+          image: bgImg as ImageLike,
+          fit: bg.fit ?? "cover",
+          opacity: bg.opacity ?? 100,
+          blur: bg.blur ?? 0,
+          darken: bg.darken ?? 0,
+        }
+      : { mode: "theme" };
+
   renderScheduleToContext(ctx, {
     schedule: opts.schedule,
     measure: m,
@@ -147,6 +170,7 @@ export async function renderScheduleToPng(
     logoImg: logoImg as ImageLike,
     twitchGlyph,
     visuals: opts.visuals,
+    background,
   });
 
   return canvas.toBuffer("image/png");

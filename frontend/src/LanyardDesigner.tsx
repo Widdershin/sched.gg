@@ -15,15 +15,18 @@ import {
 import {
   renderLanyardSide,
   renderEntrantSchedule,
+  lanyardScheduleBackground,
   fitTextFontPx,
 } from "./lanyard-render";
 import { onAssetsReady } from "./render";
 import { fileToImageDataUrl } from "./images";
+import { THEME } from "../../shared/render.js";
 import type {
   Entrant,
   LanyardDesign,
   LanyardElement,
   LanyardElementType,
+  LanyardScheduleBg,
   OutputSettings,
   Schedule,
 } from "./types";
@@ -61,6 +64,7 @@ interface Props {
   schedule: Schedule;
   output: OutputSettings;
   logoImg: HTMLImageElement | null;
+  bgImg: HTMLImageElement | null;
   selectedEntrant: Entrant | null;
 }
 
@@ -70,6 +74,7 @@ export default function LanyardDesigner({
   schedule,
   output,
   logoImg,
+  bgImg,
   selectedEntrant,
 }: Props) {
   const [side, setSide] = useState<SideKey>("front");
@@ -106,8 +111,18 @@ export default function LanyardDesigner({
         resolveRatio(output),
         logoImg,
         selectedEntrant?.eventIds ?? [],
+        lanyardScheduleBackground(design, bgImg, schedule.background),
       ),
-    [schedule, output, logoImg, selectedEntrant, assetTick],
+    [
+      schedule,
+      output,
+      logoImg,
+      bgImg,
+      selectedEntrant,
+      assetTick,
+      design.scheduleBg,
+      design.scheduleBgColor,
+    ],
   );
 
   // Preload image data URLs used on the current side (incl. role badges).
@@ -447,6 +462,9 @@ export default function LanyardDesigner({
               updateEl={updateEl}
               removeEl={removeEl}
               reorder={reorder}
+              design={design}
+              updateDesign={update}
+              hasBackground={!!schedule.background}
               onReplaceImage={(file) =>
                 file &&
                 fileToImageDataUrl(file)
@@ -580,12 +598,18 @@ function ElementProps({
   removeEl,
   reorder,
   onReplaceImage,
+  design,
+  updateDesign,
+  hasBackground,
 }: {
   el: LanyardElement;
   updateEl: (id: string, fn: (el: LanyardElement) => void) => void;
   removeEl: (id: string) => void;
   reorder: (id: string, dir: -1 | 1) => void;
   onReplaceImage: (file: File | undefined) => void;
+  design: LanyardDesign;
+  updateDesign: (mutator: (d: LanyardDesign) => void) => void;
+  hasBackground: boolean;
 }) {
   const replaceRef = useRef<HTMLInputElement>(null);
   const slider = (
@@ -716,9 +740,44 @@ function ElementProps({
       )}
 
       {el.type === "schedule" && (
-        <p className="startgg-hint">
-          Shows each entrant's highlighted schedule.
-        </p>
+        <>
+          <p className="startgg-hint">
+            Shows each entrant's highlighted schedule.
+          </p>
+          <label className="prop-row">
+            <span>Background</span>
+            <select
+              value={design.scheduleBg ?? "color"}
+              onChange={(e) =>
+                updateDesign(
+                  (d) => (d.scheduleBg = e.target.value as LanyardScheduleBg),
+                )
+              }
+            >
+              <option value="image">Custom image</option>
+              <option value="color">Solid color</option>
+              <option value="transparent">Transparent</option>
+            </select>
+          </label>
+          {(design.scheduleBg ?? "color") === "color" && (
+            <label className="prop-row">
+              <span>BG color</span>
+              <input
+                type="color"
+                value={design.scheduleBgColor || THEME.bg}
+                onChange={(e) =>
+                  updateDesign((d) => (d.scheduleBgColor = e.target.value))
+                }
+              />
+            </label>
+          )}
+          {(design.scheduleBg ?? "color") === "image" && !hasBackground && (
+            <p className="startgg-hint">
+              No custom background uploaded — add one on the schedule editor page.
+              Falls back to a solid color until then.
+            </p>
+          )}
+        </>
       )}
 
       {el.type === "roleImage" && (
