@@ -9,6 +9,7 @@ import {
   elementRect,
   entrantName,
   makeElement,
+  sideElementsForRender,
   sidePixels,
   type ElementRectOpts,
 } from "../../shared/lanyard.js";
@@ -97,6 +98,13 @@ export default function LanyardDesigner({
   useEffect(() => onAssetsReady(() => setAssetTick((n) => n + 1)), []);
 
   const currentSide = design[side];
+  // What actually draws on this side: its own elements plus the other side's
+  // shared elements (behind). The overlay/layers still use currentSide.elements,
+  // so shared elements are edited from their home side.
+  const renderEls = useMemo(
+    () => sideElementsForRender(design, side),
+    [design, side],
+  );
   const aspect = design.widthMm / design.heightMm;
   const stageW = STAGE_H * aspect;
   const tag = selectedEntrant ? entrantName(selectedEntrant) : "";
@@ -126,10 +134,11 @@ export default function LanyardDesigner({
     ],
   );
 
-  // Preload image data URLs used on the current side (incl. role badges).
+  // Preload image data URLs drawn on the current side (incl. shared from the
+  // other side and role badges).
   useEffect(() => {
     const srcs = [
-      ...currentSide.elements
+      ...renderEls
         .filter(
           (e) => (e.type === "image" || e.type === "backgroundImage") && e.src,
         )
@@ -157,7 +166,7 @@ export default function LanyardDesigner({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    JSON.stringify(currentSide.elements.map((e) => e.src ?? "")),
+    JSON.stringify(renderEls.map((e) => e.src ?? "")),
     JSON.stringify(roleImages),
   ]);
 
@@ -171,15 +180,16 @@ export default function LanyardDesigner({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    renderLanyardSide(ctx, currentSide, stageW, STAGE_H, {
-      scheduleImg,
-      tag,
-      role,
-      roleImages,
-      images,
-    });
+    renderLanyardSide(
+      ctx,
+      { background: currentSide.background, elements: renderEls },
+      stageW,
+      STAGE_H,
+      { scheduleImg, tag, role, roleImages, images },
+    );
   }, [
     currentSide,
+    renderEls,
     design,
     scheduleImg,
     images,
@@ -578,7 +588,10 @@ function LayersPanel({
               className={`layer-row${el.id === selectedId ? " active" : ""}`}
               onClick={() => onSelect(el.id)}
             >
-              <span className="layer-name">{layerLabel(el)}</span>
+              <span className="layer-name">
+                {layerLabel(el)}
+                {el.shared && <span className="layer-tag"> · both sides</span>}
+              </span>
               <button
                 className="btn icon"
                 title="Bring forward"
@@ -695,6 +708,17 @@ function ElementProps({
               ? "Background image"
               : el.type}
       </span>
+
+      <label className="prop-row">
+        <span>Both sides</span>
+        <input
+          type="checkbox"
+          checked={!!el.shared}
+          onChange={(ev) =>
+            updateEl(el.id, (e) => (e.shared = ev.target.checked))
+          }
+        />
+      </label>
 
       {/* Background image covers the whole side, so it has no width control. */}
       {el.type !== "backgroundImage" &&

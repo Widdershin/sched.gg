@@ -2,7 +2,7 @@
 // into a single zip, entirely client-side (keeps load off the backend machine and
 // reuses the already-loaded fonts + Twitch icon).
 import { zip } from "fflate";
-import { entrantName, sidePixels } from "../../shared/lanyard.js";
+import { entrantName, sidePixels, sideElementsForRender } from "../../shared/lanyard.js";
 import {
   lanyardScheduleBackground,
   preloadImages,
@@ -104,7 +104,10 @@ export async function generateLanyardsZip(opts: GenerateOpts): Promise<void> {
     schedule.background,
   );
   const { w: sideW, h: sideH } = sidePixels(design);
-  const hasBack = design.back.elements.length > 0;
+  // Effective per-side element lists (include the other side's shared elements).
+  const frontEls = sideElementsForRender(design, "front");
+  const backEls = sideElementsForRender(design, "back");
+  const hasBack = backEls.length > 0;
 
   const srcs = [
     ...[...design.front.elements, ...design.back.elements]
@@ -152,11 +155,23 @@ export async function generateLanyardsZip(opts: GenerateOpts): Promise<void> {
     usedNames.add(base);
 
     fctx.setTransform(1, 0, 0, 1, 0, 0);
-    renderLanyardSide(fctx, design.front, sideW, sideH, assets);
+    renderLanyardSide(
+      fctx,
+      { background: design.front.background, elements: frontEls },
+      sideW,
+      sideH,
+      assets,
+    );
 
     if (hasBack) {
       bctx.setTransform(1, 0, 0, 1, 0, 0);
-      renderLanyardSide(bctx, design.back, sideW, sideH, assets);
+      renderLanyardSide(
+        bctx,
+        { background: design.back.background, elements: backEls },
+        sideW,
+        sideH,
+        assets,
+      );
     }
 
     if (format === "pdf") {
