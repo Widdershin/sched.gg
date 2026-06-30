@@ -57,6 +57,9 @@ function resolveRatio(output: OutputSettings): number | null {
 
 const STAGE_H = 520; // on-screen card height in CSS px
 const SNAP = 0.012; // centre snap threshold (fraction of side)
+// Elements may be dragged off the card edges (e.g. for a bleed), but at least
+// this fraction of the side is kept on-canvas so they can't be lost.
+const EDGE_KEEP = 0.05;
 const BLEED_MM = 3; // bleed indicator inset
 
 interface Props {
@@ -332,9 +335,10 @@ export default function LanyardDesigner({
       return;
     }
 
-    // Move, snapping the element's centre to the side's centre on either axis.
-    let nx = Math.min(1, Math.max(0, st.origX + dx));
-    let ny = Math.min(1, Math.max(0, st.origY + dy));
+    // Move, allowing the element to extend past the card edges (kept partly on
+    // so it can't be lost), and snapping its centre to the side's centre.
+    let nx = st.origX + dx;
+    let ny = st.origY + dy;
     let gv = false;
     let gh = false;
     const el = currentSide.elements.find((e2) => e2.id === st.id);
@@ -342,6 +346,8 @@ export default function LanyardDesigner({
       const r = elementRect(el, stageW, STAGE_H, rectOpts(el, stageW, STAGE_H));
       const wFrac = r.w / stageW;
       const hFrac = r.h / STAGE_H;
+      nx = Math.min(1 - EDGE_KEEP, Math.max(EDGE_KEEP - wFrac, nx));
+      ny = Math.min(1 - EDGE_KEEP, Math.max(EDGE_KEEP - hFrac, ny));
       if (Math.abs(nx + wFrac / 2 - 0.5) < SNAP) {
         nx = 0.5 - wFrac / 2;
         gv = true;
