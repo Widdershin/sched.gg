@@ -1,10 +1,65 @@
 // Browser-side renderer for one lanyard side. Used by both the designer stage
 // (screen px) and the PNG exporter (export px) so layout always matches.
-import { THEME } from "../../shared/render.js";
+import { THEME, clamp } from "../../shared/render.js";
 import type { BackgroundSpec } from "../../shared/render.js";
 import { elementRect } from "../../shared/lanyard.js";
 import { renderSchedule } from "./render";
-import type { LanyardDesign, LanyardSide, Schedule, ScheduleBackground } from "./types";
+import type {
+  LanyardDesign,
+  LanyardElement,
+  LanyardSide,
+  Schedule,
+  ScheduleBackground,
+} from "./types";
+
+// Max blur radius as a fraction of the card height, at the top of the slider.
+// Blur is stored 0-100 and scaled by the side height so a card looks the same
+// in the designer preview and the full-resolution export.
+const MAX_BLUR_FRAC = 0.04;
+
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+// Draw an image element honoring its opacity / blur / darken adjustments. When
+// blurred, the box is clipped and the image overscanned so the blur fills the
+// rect cleanly instead of fading at the edges.
+function drawImageElement(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement | HTMLCanvasElement,
+  r: Rect,
+  el: LanyardElement,
+  sideH: number,
+): void {
+  const opacity = clamp(el.opacity ?? 100, 0, 100) / 100;
+  const darken = clamp(el.darken ?? 0, 0, 100) / 100;
+  const blurPx = (clamp(el.blur ?? 0, 0, 100) / 100) * MAX_BLUR_FRAC * sideH;
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  if (blurPx > 0) {
+    ctx.beginPath();
+    ctx.rect(r.x, r.y, r.w, r.h);
+    ctx.clip();
+    ctx.filter = `blur(${blurPx}px)`;
+    const o = blurPx * 2;
+    ctx.drawImage(img, r.x - o, r.y - o, r.w + o * 2, r.h + o * 2);
+  } else {
+    ctx.drawImage(img, r.x, r.y, r.w, r.h);
+  }
+  ctx.restore();
+
+  if (darken > 0) {
+    ctx.save();
+    ctx.globalAlpha = opacity * darken;
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.restore();
+  }
+}
 
 export interface SideAssets {
   // The selected/entrant's rendered schedule (a canvas), or null when none.
@@ -59,7 +114,7 @@ export function renderLanyardSide(
       const img = el.src ? assets.images.get(el.src) : undefined;
       if (!img) continue;
       const r = elementRect(el, sideW, sideH, { aspect: imgAspect(img) });
-      ctx.drawImage(img, r.x, r.y, r.w, r.h);
+      drawImageElement(ctx, img, r, el, sideH);
     } else if (el.type === "schedule") {
       const img = assets.scheduleImg;
       if (!img) continue;

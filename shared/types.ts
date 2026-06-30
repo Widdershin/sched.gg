@@ -71,6 +71,9 @@ export interface LanyardElement {
   h?: number; // shapes only: height, fraction of side height (others derive)
   // image
   src?: string; // downscaled PNG data URL
+  opacity?: number; // image: 0-100, default 100
+  blur?: number; // image: 0-100 (relative to card height), default 0
+  darken?: number; // image: 0-100 (% black overlay), default 0
   // text / tag
   text?: string; // static content (type "text")
   fontFrac?: number; // font size, fraction of side height
